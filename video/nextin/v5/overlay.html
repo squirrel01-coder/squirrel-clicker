@@ -1,0 +1,174 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent}canvas{display:block}</style></head>
+<body><canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// Графика поверх живого видео (прозрачный холст). draw(t) рисует кадр; тайминги — timeline.json.
+const W = 1080, H = 1920, CX = 540, SX = 180, SW = 720;
+const c = document.getElementById('c'), x = c.getContext('2d');
+const C = { blue: '#0084FF', blue2: '#0059FF', cyan: '#38BDF8', violet: '#8B5CF6', pink: '#EC4899', ok: '#10B981', bad: '#EF4444', gold: '#F59E0B', ink: '#0B1020', tg: '#229ED9', wa: '#25D366', ig: '#E1306C' };
+const F = 'Inter, sans-serif';
+let L = [], CUTS = [], DUR = 44, FACES = {}, IMG = [];
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const p = (t, a, b) => clamp((t - a) / (b - a));
+const eo = v => 1 - Math.pow(1 - v, 3);
+const eio = v => v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2;
+const eb = v => { const s = 1.8; return v <= 0 ? 0 : 1 + (s + 1) * Math.pow(v - 1, 3) + s * Math.pow(v - 1, 2); };
+function grad(x0, y0, x1, y1, ...cols) { const g = x.createLinearGradient(x0, y0, x1, y1); cols.forEach((cl, i) => g.addColorStop(i / (cols.length - 1), cl)); return g; }
+function rr(X, Y, w, h, r) { x.beginPath(); x.roundRect(X, Y, w, h, r); }
+function T(s, X, Y, size, op = {}) {
+  x.save(); x.font = `${op.w || 800} ${size}px ${F}`; x.textAlign = op.align || 'center'; x.textBaseline = 'middle'; x.globalAlpha *= op.a ?? 1;
+  String(s).split('\n').forEach((l, i) => { const yy = Y + i * size * 1.15;
+    if (op.stroke) { x.lineJoin = 'round'; x.lineWidth = op.stroke; x.strokeStyle = op.strokeCol || '#0B1020cc'; x.strokeText(l, X, yy); }
+    if (op.glow) { x.shadowColor = op.glow; x.shadowBlur = 30; }
+    x.fillStyle = op.fill || '#fff'; x.fillText(l, X, yy); x.shadowBlur = 0; });
+  x.restore();
+}
+function glass(X, Y, w, h, op = {}) {
+  x.save(); x.shadowColor = '#0B102055'; x.shadowBlur = 40; x.shadowOffsetY = 12;
+  x.fillStyle = op.fill || 'rgba(255,255,255,.92)'; rr(X - w / 2, Y - h / 2, w, h, op.r ?? 32); x.fill(); x.restore();
+  if (op.accent) { x.save(); rr(X - w / 2, Y - h / 2, w, h, op.r ?? 32); x.clip(); x.fillStyle = op.accent; x.fillRect(X - w / 2, Y - h / 2, 14, h); x.restore(); }
+}
+function pop(t, t0, X, Y, fn, d = .35, rot = 0) { const k = eb(p(t, t0, t0 + d)); if (k <= 0) return; x.save(); x.translate(X, Y); x.scale(k, k); x.rotate(rot * (1 - clamp(k))); x.globalAlpha *= clamp(k * 1.6); fn(); x.restore(); }
+function logo(X, Y, s) {
+  x.save(); x.translate(X, Y); x.scale(s, s);
+  x.fillStyle = grad(-60, -60, 60, 60, '#1A6BFF', C.blue); x.beginPath(); x.moveTo(-58, 0); x.lineTo(-14, -44); x.lineTo(4, -26); x.lineTo(-22, 0); x.lineTo(4, 26); x.lineTo(-14, 44); x.closePath(); x.fill();
+  x.fillStyle = grad(-20, -60, 60, 60, C.blue, C.cyan); x.beginPath(); x.moveTo(-6, 0); x.lineTo(32, -38); x.lineTo(70, 0); x.lineTo(32, 38); x.closePath(); x.fill(); x.restore();
+}
+function icon(X, Y, r, col, ch) { x.fillStyle = col; x.beginPath(); x.arc(X, Y, r, 0, 7); x.fill(); T(ch, X, Y + 2, r * 1.1, { w: 400 }); }
+function kinetic(words, X, Y, size, t0, step, t, op = {}) {
+  x.save(); x.font = `900 ${size}px ${F}`; const sp = size * .3, ws = words.map(w => x.measureText(w[0]).width), tot = ws.reduce((a, b) => a + b, 0) + sp * (words.length - 1); x.restore();
+  let cx = X - tot / 2; words.forEach(([w, col], i) => { const k = eb(p(t, t0 + i * step, t0 + i * step + .3)); if (k > 0) { x.save(); x.translate(cx + ws[i] / 2, Y); x.scale(k, k); T(w, 0, 0, size, { w: 900, fill: col || '#fff', stroke: op.stroke ?? 12 }); x.restore(); } cx += ws[i] + sp; });
+}
+
+// ---- элементы интерфейса камеры и чата ----
+function hud(t, name) {
+  x.save(); x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 6; const m = 60, l = 70;
+  [[m, 300, 1, 1], [W - m, 300, -1, 1], [m, 1150, 1, -1], [W - m, 1150, -1, -1]].forEach(([X, Y, sx, sy]) => { x.beginPath(); x.moveTo(X, Y + sy * l); x.lineTo(X, Y); x.lineTo(X + sx * l, Y); x.stroke(); });
+  if (Math.floor(t * 2) % 2 === 0) { x.fillStyle = C.bad; x.beginPath(); x.arc(m + 30, 260, 12, 0, 7); x.fill(); }
+  T('REC', m + 52, 262, 28, { align: 'left', w: 900, stroke: 6 }); T(name, W - m, 262, 28, { align: 'right', w: 800, stroke: 6 });
+  const s = Math.floor(t) % 60; T('14.10.2026  09:' + String(12 + Math.floor(t / 60)).padStart(2, '0') + ':' + String(s).padStart(2, '0'), m, 1190, 26, { align: 'left', w: 700, stroke: 6 });
+  x.restore();
+}
+function bubble(t, t0, s, mine, Y, op = {}) {
+  const k = eo(p(t, t0, t0 + .3)); if (k <= 0) return 0;
+  let text = s; if (op.type) { const n = Math.floor(p(t, t0, t0 + op.type) * s.length); text = s.slice(0, Math.max(1, n)); }
+  x.save(); x.font = `700 38px ${F}`; const lines = []; let line = '';
+  for (const w of text.split(' ')) { const tt = line ? line + ' ' + w : w; if (x.measureText(tt).width > 560 && line) { lines.push(line); line = w; } else line = tt; } lines.push(line);
+  const bw = Math.min(640, Math.max(...lines.map(l => x.measureText(l).width)) + 64), bh = 30 + lines.length * 48, X = mine ? SX + SW - bw + 20 : SX - 20;
+  x.restore(); x.save(); x.globalAlpha *= k; x.translate(0, (1 - k) * 30);
+  x.shadowColor = '#0008'; x.shadowBlur = 30; x.fillStyle = mine ? grad(X, 0, X + bw, 0, C.blue2, C.blue) : 'rgba(255,255,255,.95)'; rr(X, Y, bw, bh, 30); x.fill(); x.shadowBlur = 0;
+  if (!mine) { x.fillStyle = C.ok; x.beginPath(); x.arc(X + 4, Y + 4, 22, 0, 7); x.fill(); T('📷', X + 4, Y + 6, 22, { w: 400 }); }
+  lines.forEach((l, i) => T(l, X + 32, Y + 38 + i * 48, 38, { align: 'left', w: 700, fill: mine ? '#fff' : C.ink }));
+  x.restore(); return bh;
+}
+function typing(t, t0, t1, Y) { if (t < t0 || t > t1) return; x.save(); x.fillStyle = 'rgba(255,255,255,.95)'; rr(SX - 20, Y, 140, 70, 35); x.fill();
+  for (let i = 0; i < 3; i++) { x.globalAlpha = .35 + .65 * Math.abs(Math.sin(t * 7 + i)); x.fillStyle = '#64748B'; x.beginPath(); x.arc(SX + 20 + i * 30, Y + 35, 10, 0, 7); x.fill(); } x.restore(); }
+function faceBoxes(t, label) {
+  const f = FACES.boxes?.[Math.round(t * (FACES.fps || 30))]; if (!f) return;
+  f.forEach(([bx, by, bw, bh], i) => { x.save(); x.strokeStyle = C.ok; x.lineWidth = 5; x.shadowColor = C.ok; x.shadowBlur = 20; const c = bw * .25;
+    [[bx, by, 1, 1], [bx + bw, by, -1, 1], [bx, by + bh, 1, -1], [bx + bw, by + bh, -1, -1]].forEach(([X, Y, sx, sy]) => { x.beginPath(); x.moveTo(X, Y + sy * c); x.lineTo(X, Y); x.lineTo(X + sx * c, Y); x.stroke(); });
+    x.shadowBlur = 0; x.fillStyle = C.ok; rr(bx, by - 46, Math.max(bw, 230), 40, 10); x.fill(); T(label, bx + 12, by - 25, 24, { align: 'left', w: 800 }); x.restore(); });
+}
+const S = [
+  // 0 Хук: «Ты меня видишь?»
+  (t, a) => {
+    kinetic([['Я'], ['спросил'], ['свою'], ['камеру…', '#7DD3FC']], CX, 330, 70, a, .18, t);
+    bubble(t, a + 1.4, 'Ты меня видишь?', true, 900, { type: .9 });
+  },
+  // 1 Ответ камеры
+  (t, a, b) => {
+    hud(t, 'CAM 02 · Кабинет');
+    bubble(t, a - .2, 'Ты меня видишь?', true, 420);
+    typing(t, a, a + .9, 560);
+    bubble(t, a + .9, 'Да, вижу 👀 Вы сидите за столом у окна и работаете за ноутбуком.', false, 560, { type: .8 });
+  },
+  // 2 Nextin: чат с камерами
+  (t, a) => {
+    pop(t, a, CX, 520, () => { glass(0, 0, 640, 260, { r: 48 }); logo(-200, -10, 1.1); T('Nextin', 60, -6, 100, { w: 900, fill: C.ink }); }, .5);
+    pop(t, a + 1.0, CX, 760, () => { x.fillStyle = grad(-330, 0, 330, 0, C.blue2, C.violet, C.pink); x.shadowColor = C.violet; x.shadowBlur = 40; rr(-330, -66, 660, 132, 66); x.fill(); x.shadowBlur = 0; T('📹  Умное видеонаблюдение', 0, 3, 44, { w: 900 }); });
+    [['💬', 'Чат с камерами'], ['🧠', 'Искусственный интеллект'], ['🙂', 'Распознавание лиц']].forEach(([ic, s], i) => pop(t, a + 3.0 + i * .5, CX, 930 + i * 100, () => { glass(0, 0, 560, 84, { r: 42 }); T(ic + '  ' + s, 0, 2, 36, { w: 800, fill: C.ink }); }));
+  },
+  // 3 Кто подходил к двери: рамки лиц + галерея
+  (t, a) => {
+    hud(t, 'CAM 01 · Вход'); faceBoxes(t, '🙂 Лицо распознано');
+    bubble(t, a + .2, 'Кто сегодня подходил к двери?', true, 360, { type: .8 });
+    typing(t, a + 2.0, a + 2.8, 500);
+    bubble(t, a + 2.8, 'Нашёл 2 человека. Вот их фото:', false, 500);
+    [[0, '09:14'], [1, '13:40']].forEach(([k, tm], i) => pop(t, a + 3.4 + i * .4, CX - 150 + i * 300, 760, () => { glass(0, 0, 260, 320, { r: 28 }); if (IMG[k]) { x.save(); rr(-115, -145, 230, 230, 20); x.clip(); x.drawImage(IMG[k], -115, -145, 230, 230); x.restore(); } T('Сегодня, ' + tm, 0, 120, 28, { w: 800, fill: C.ink }); }, .35, (i ? .3 : -.3)));
+  },
+  // 4 Камера вырезает момент
+  (t, a) => {
+    hud(t, 'CAM 01 · Вход'); faceBoxes(t, '🙂 Посетитель');
+    bubble(t, a + .1, 'Покажи, как он заходил', true, 360, { type: .7 });
+    const k = eo(p(t, a + 1.2, a + 1.6));
+    if (k) { x.save(); x.globalAlpha *= k; glass(CX, 900, 720, 200, { r: 32 }); x.fillStyle = '#E2E8F0'; rr(SX + 30, 880, 660, 26, 13); x.fill();
+      const s0 = .35, s1 = .35 + .3 * eo(p(t, a + 1.6, a + 2.6)); x.fillStyle = grad(0, 0, W, 0, C.blue2, C.violet); rr(SX + 30 + 660 * s0, 874, 660 * (s1 - s0), 38, 12); x.fill();
+      T('✂️  13:40:05 – 13:40:20', CX, 840, 32, { w: 800, fill: C.ink }); T('Вырезаю нужный момент…', CX, 955, 28, { w: 600, fill: '#64748B' }); x.restore(); }
+    pop(t, a + 3.0, CX, 1100, () => { x.fillStyle = C.ok; x.shadowColor = '#0006'; x.shadowBlur = 30; rr(-300, -56, 600, 112, 56); x.fill(); x.shadowBlur = 0; T('▶  Видео готово · 0:15', 0, 3, 40, { w: 900 }); });
+  },
+  // 5 Дома
+  (t, a) => {
+    hud(t, 'CAM 03 · Дом');
+    bubble(t, a + .1, 'Как там дети?', true, 360, { type: .5 });
+    typing(t, a + .9, a + 1.5, 500);
+    bubble(t, a + 1.5, 'Играют в комнате, всё хорошо 😊', false, 500);
+    pop(t, a + 2.2, CX, 1060, () => { x.fillStyle = '#F59E0Bee'; rr(-280, -56, 560, 112, 56); x.fill(); T('🏠  Дома всё спокойно', 0, 3, 42, { w: 900 }); });
+  },
+  // 6 Детский сад (без распознавания лиц детей)
+  (t, a) => {
+    hud(t, 'CAM · Детский сад');
+    bubble(t, a + .1, 'Всё в порядке в группе?', true, 360, { type: .6 });
+    typing(t, a + 1.0, a + 1.6, 500);
+    bubble(t, a + 1.6, 'Да. Дети занимаются с воспитателем ✅', false, 500);
+    pop(t, a + 2.6, CX, 1060, () => { x.fillStyle = C.ok + 'ee'; rr(-300, -56, 600, 112, 56); x.fill(); T('👨‍👩‍👧  Родители спокойны', 0, 3, 42, { w: 900 }); });
+  },
+  // 7 Магазин
+  (t, a) => {
+    hud(t, 'CAM · Магазин');
+    bubble(t, a + .1, 'Во сколько сегодня открыли?', true, 360, { type: .6 });
+    typing(t, a + 1.0, a + 1.6, 500);
+    bubble(t, a + 1.6, 'В 08:57. Открыл Азиз 🔑', false, 500);
+    pop(t, a + 2.4, CX, 1060, () => { x.fillStyle = C.blue2 + 'ee'; rr(-300, -56, 600, 112, 56); x.fill(); T('🏪  Всё под контролем', 0, 3, 42, { w: 900 }); });
+  },
+  // 8 CTA
+  (t, a) => {
+    const k = eo(p(t, a - .1, a + .4)); x.save(); x.globalAlpha *= k; x.fillStyle = grad(0, 0, 0, H, '#0B1020ee', '#0B1020bb', '#0B1020ee'); x.fillRect(0, 0, W, H); x.restore();
+    pop(t, a, CX, 330, () => { logo(-215, 0, .95); T('Nextin', 50, 4, 96, { w: 900 }); }, .45);
+    T('Умное видеонаблюдение', CX, 490, 60, { w: 800, a: eo(p(t, a + .4, a + .8)) });
+    pop(t, a + .9, CX, 600, () => T('Покажем в работе', 0, 0, 78, { w: 900, fill: grad(-350, 0, 350, 0, C.cyan, '#fff', '#F9A8D4') }), .4);
+    pop(t, a + 1.6, CX, 800, () => { const pl = 1 + .04 * Math.sin(t * 7); x.scale(pl, pl); x.fillStyle = grad(-340, 0, 340, 0, C.blue2, C.violet, C.pink); x.shadowColor = C.violet; x.shadowBlur = 50; rr(-340, -80, 680, 160, 80); x.fill(); x.shadowBlur = 0; T('Пишите в Direct →', 0, 4, 58, { w: 900 }); });
+    const ca = eo(p(t, a + 2.3, a + 2.7));
+    T('📞  +998 77 777 16 68', CX, 1000, 54, { w: 800, a: ca }); T('✈  @dosd_nextin', CX, 1090, 50, { w: 700, fill: '#7DD3FC', a: ca }); T('🌐  nextin.uz', CX, 1180, 50, { w: 700, fill: '#C4B5FD', a: ca });
+  },
+];
+function captions(t) {
+  const l = L.find(s => t >= s[0] - .05 && t <= s[1] + .2); if (!l) return;
+  const [s0, s1, text] = l, words = text.split(' '), tot = words.reduce((n, w) => n + w.length + 1, 0);
+  let acc = 0, cur = words.length - 1; for (let k = 0; k < words.length; k++) { acc += words[k].length + 1; if (t < s0 + (s1 - s0) * acc / tot) { cur = k; break; } }
+  x.save(); x.font = `900 46px ${F}`; const lines = []; let line = [];
+  for (const w of words) { if (x.measureText([...line, w].join(' ')).width > SW && line.length) { lines.push(line); line = []; } line.push(w); } lines.push(line);
+  const Y0 = 1400 - (lines.length - 1) * 58; let idx = 0;
+  lines.forEach((ln, li) => { let cx = CX - x.measureText(ln.join(' ')).width / 2;
+    ln.forEach(w => { x.lineJoin = 'round'; x.lineWidth = 12; x.strokeStyle = '#000'; x.textBaseline = 'middle'; x.strokeText(w, cx, Y0 + li * 58);
+      x.fillStyle = idx === cur ? '#FDE047' : '#fff'; x.fillText(w, cx, Y0 + li * 58); cx += x.measureText(w + ' ').width; idx++; }); });
+  x.restore();
+}
+function draw(t) {
+  x.clearRect(0, 0, W, H);
+  // Мягкие затемнения сверху и снизу для читаемости
+  let g = x.createLinearGradient(0, 0, 0, 500); g.addColorStop(0, '#0B102088'); g.addColorStop(1, '#0B102000'); x.fillStyle = g; x.fillRect(0, 0, W, 500);
+  g = x.createLinearGradient(0, 1150, 0, H); g.addColorStop(0, '#0B102000'); g.addColorStop(1, '#0B1020cc'); x.fillStyle = g; x.fillRect(0, 1150, W, H - 1150);
+  const bounds = [0, ...CUTS, DUR];
+  S.forEach((fn, i) => { const a = i ? L[i][0] : L[0][0], s = bounds[i], e = bounds[i + 1]; if (t < s - .05 || t > e + .05) return; x.save(); x.globalAlpha = Math.min(clamp((t - s) / .12), clamp((e - t) / .12)) || (i === 8 ? 1 : 0); fn(t, a, e); x.restore(); });
+  captions(t);
+  // Цветная «шторка» на каждом монтажном стыке
+  CUTS.forEach(cut => { const q = p(t, cut - .22, cut + .22); if (q <= 0 || q >= 1) return; const X = -600 + q * 2300;
+    x.save(); x.translate(X, H / 2); x.rotate(-.35); x.fillStyle = grad(-260, 0, 260, 0, '#38BDF800', C.cyan, C.violet, C.pink, '#EC489900'); x.fillRect(-260, -1400, 520, 2800); x.restore();
+    const f = 1 - Math.abs(t - cut) / .22; x.fillStyle = `rgba(255,255,255,${.25 * f})`; x.fillRect(0, 0, W, H); });
+}
+window.setup = async d => { L = d.lines; CUTS = d.cuts; DUR = d.duration; FACES = d.faces || {};
+  IMG = await Promise.all((d.faceImgs || []).map(src => new Promise(r => { const im = new Image(); im.onload = () => r(im); im.src = src; })));
+  return DUR; };
+window.draw = draw;
+document.fonts.load(`800 40px Inter`).then(() => { window.ready = true; });
+</script></body></html>
