@@ -1,8 +1,8 @@
 #!/bin/bash
 # Ставит все скиллы и плагины пользователя в ~/.claude — для КАЖДОЙ сессии, в любом репозитории.
-# Скопируйте этот файл целиком в Setup script облачного окружения
-# (меню окружения в заголовке сессии → Edit → Setup script).
-# Чтобы добавить скилл: допишите строку skill/plugin ниже и обновите Setup script.
+# Setup script облачного окружения скачивает этот файл при старте каждой сессии:
+#   curl -fsSL https://raw.githubusercontent.com/squirrel01-coder/squirrel-clicker/HEAD/.claude/setup-skills.sh | bash
+# Чтобы добавить скилл: допишите строку skill/plugin ниже и запушьте в основную ветку.
 
 mkdir -p ~/.claude/skills
 
