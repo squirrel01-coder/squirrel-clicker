@@ -1,0 +1,301 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#04070F}canvas{display:block}</style></head>
+<body><canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// Обзорный ролик Nextin (≈3,5 мин, 9:16). draw(t) рисует кадр; тайминги сцен и реплик — timeline.json (setup()).
+const W = 1080, H = 1920, CX = 540, SX = 180, SW = 720;
+const out = document.getElementById('c'), o = out.getContext('2d');
+const buf = document.createElement('canvas'); buf.width = W; buf.height = H; const x = buf.getContext('2d');
+const C = { bg1: '#04070F', bg2: '#0A1A3F', blue: '#0084FF', blue2: '#0059FF', cyan: '#38BDF8', ok: '#34D399', bad: '#F43F5E', warn: '#F97316', gold: '#FBBF24', txt: '#F8FAFC', dim: '#94A3B8', card: '#0E1C40', tg: '#229ED9', wa: '#25D366', violet: '#8B5CF6' };
+const F = 'Inter, sans-serif';
+let PH = [], SC = {}, ORDER = [], DUR = 200;
+
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const p = (t, a, b) => clamp((t - a) / (b - a));
+const eo = v => 1 - Math.pow(1 - v, 3);
+const eio = v => v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2;
+const eb = v => { const s = 1.7; return v <= 0 ? 0 : 1 + (s + 1) * Math.pow(v - 1, 3) + s * Math.pow(v - 1, 2); };
+const rnd = s => { const v = Math.sin(s * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+
+function grad(x0, y0, x1, y1, a = C.blue2, b = C.cyan) { const g = x.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, a); g.addColorStop(1, b); return g; }
+function rr(X, Y, w, h, r) { x.beginPath(); x.roundRect(X, Y, w, h, r); }
+function T(s, X, Y, size, op = {}) {
+  x.save(); x.font = `${op.w || 800} ${size}px ${F}`; x.textAlign = op.align || 'center'; x.textBaseline = 'middle';
+  x.globalAlpha *= op.a ?? 1; x.fillStyle = op.fill || C.txt; if (op.glow) { x.shadowColor = op.glow; x.shadowBlur = 40; }
+  String(s).split('\n').forEach((l, i) => x.fillText(l, X, Y + i * size * (op.lh || 1.15))); x.restore();
+}
+function wrap(s, size, maxW, w = 700) {
+  x.save(); x.font = `${w} ${size}px ${F}`; const L = []; let line = '';
+  for (const word of s.split(' ')) { const t = line ? line + ' ' + word : word; if (x.measureText(t).width > maxW && line) { L.push(line); line = word; } else line = t; }
+  if (line) L.push(line); x.restore(); return L;
+}
+function pop(t, t0, X, Y, fn, d = .35) { const k = eb(p(t, t0, t0 + d)); if (k <= 0) return; x.save(); x.translate(X, Y); x.scale(k, k); x.globalAlpha *= clamp(k * 1.5); fn(); x.restore(); }
+function kinetic(words, X, Y, size, t0, step, t, op = {}) {
+  x.save(); x.font = `${op.w || 900} ${size}px ${F}`;
+  const sp = size * .4, ws = words.map(w => x.measureText(w[0]).width), total = ws.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+  let cx = X - total / 2; x.restore();
+  words.forEach(([w, col], i) => { const a = eb(p(t, t0 + i * step, t0 + i * step + .35));
+    if (a > 0) { x.save(); x.translate(cx + ws[i] / 2, Y + (1 - clamp(a)) * 40); x.scale(a, a); T(w, 0, 0, size, { w: op.w || 900, fill: col || C.txt, glow: op.glow }); x.restore(); }
+    cx += ws[i] + sp; });
+}
+function card(X, Y, w, h, op = {}) {
+  x.save(); if (op.glow) { x.shadowColor = op.glow; x.shadowBlur = 40; }
+  x.fillStyle = op.fill || C.card; rr(X - w / 2, Y - h / 2, w, h, op.r || 34); x.fill(); x.shadowBlur = 0;
+  if (op.stroke !== false) { x.strokeStyle = op.stroke || grad(X - w / 2, Y, X + w / 2, Y); x.lineWidth = 3; rr(X - w / 2, Y - h / 2, w, h, op.r || 34); x.stroke(); }
+  x.restore();
+}
+function logo(X, Y, s, a = 1) {
+  x.save(); x.translate(X, Y); x.scale(s, s); x.globalAlpha *= a;
+  x.fillStyle = grad(-60, -60, 60, 60, '#1A6BFF', C.blue);
+  x.beginPath(); x.moveTo(-58, 0); x.lineTo(-14, -44); x.lineTo(4, -26); x.lineTo(-22, 0); x.lineTo(4, 26); x.lineTo(-14, 44); x.closePath(); x.fill();
+  x.fillStyle = grad(-20, -60, 60, 60, C.blue, C.cyan);
+  x.beginPath(); x.moveTo(-6, 0); x.lineTo(32, -38); x.lineTo(70, 0); x.lineTo(32, 38); x.closePath(); x.fill(); x.restore();
+}
+function check(X, Y, s = 1, col = C.ok, bad = false) {
+  x.save(); x.translate(X, Y); x.scale(s, s); x.fillStyle = bad ? C.bad : col; x.beginPath(); x.arc(0, 0, 26, 0, 7); x.fill();
+  x.strokeStyle = '#04120C'; x.lineWidth = 7; x.lineCap = 'round'; x.beginPath();
+  if (bad) { x.moveTo(-9, -9); x.lineTo(9, 9); x.moveTo(9, -9); x.lineTo(-9, 9); } else { x.moveTo(-11, 1); x.lineTo(-3, 9); x.lineTo(12, -8); }
+  x.stroke(); x.restore();
+}
+function phone(X, Y, w, h, cb, tilt = 0) {
+  x.save(); x.translate(X, Y); x.rotate(tilt);
+  x.shadowColor = '#0084FF66'; x.shadowBlur = 60; x.fillStyle = '#0B1020'; rr(-w / 2, -h / 2, w, h, 64); x.fill(); x.shadowBlur = 0;
+  x.strokeStyle = '#2A3A66'; x.lineWidth = 6; rr(-w / 2, -h / 2, w, h, 64); x.stroke();
+  x.save(); rr(-w / 2 + 16, -h / 2 + 16, w - 32, h - 32, 50); x.clip(); x.fillStyle = '#0F172A'; x.fillRect(-w / 2, -h / 2, w, h);
+  x.translate(-w / 2 + 16, -h / 2 + 16); cb(w - 32, h - 32); x.restore();
+  x.fillStyle = '#000'; rr(-60, -h / 2 + 28, 120, 30, 15); x.fill(); x.restore();
+}
+function msg(X, Y, w, s, mine, a, col, size = 32) {
+  const L = wrap(s, size, w - 48, 500), h = 28 + L.length * size * 1.3; if (a <= 0) return h;
+  x.save(); x.globalAlpha *= a; x.fillStyle = col || (mine ? C.blue2 : '#1F2A44'); rr(mine ? X - w : X, Y, w, h, 24); x.fill();
+  L.forEach((l, i) => T(l, (mine ? X - w : X) + 22, Y + 14 + size * .65 + i * size * 1.3, size, { align: 'left', w: 500 })); x.restore(); return h;
+}
+function chip(s, X, Y, col, size = 34) {
+  x.save(); x.font = `700 ${size}px ${F}`; const w = x.measureText(s).width + 48; x.restore();
+  x.fillStyle = col; rr(X - w / 2, Y - size * .85, w, size * 1.7, size * .85); x.fill(); T(s, X, Y + 2, size, { w: 700 }); return w;
+}
+
+function background(t) {
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.bg1); g.addColorStop(1, C.bg2); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  [[260 + 140 * Math.sin(t * .3), 560, C.blue2, 760], [820 + 100 * Math.cos(t * .23), 1250, C.cyan, 660], [540 + 300 * Math.sin(t * .17), 300, C.violet, 520]].forEach(([X, Y, col, R]) => {
+    const r = x.createRadialGradient(X, Y, 0, X, Y, R); r.addColorStop(0, col + '2a'); r.addColorStop(1, col + '00'); x.fillStyle = r; x.fillRect(0, 0, W, H); });
+  x.save(); x.strokeStyle = '#38BDF818'; x.lineWidth = 2;
+  for (let i = -8; i <= 8; i++) { x.beginPath(); x.moveTo(CX + i * 40, 1080); x.lineTo(CX + i * 260, H); x.stroke(); }
+  for (let j = 0; j < 10; j++) { const q = ((j + (t * .5) % 1) / 10), y = 1080 + q * q * 840; x.globalAlpha = q; x.beginPath(); x.moveTo(0, y); x.lineTo(W, y); x.stroke(); }
+  x.restore();
+  x.save(); for (let i = 0; i < 70; i++) { const sx = rnd(i) * W, sy = (rnd(i + 99) * H - t * (18 + rnd(i + 7) * 50)) % H; x.globalAlpha = .2 + .35 * rnd(i + 3); x.fillStyle = i % 3 ? C.cyan : '#fff'; x.beginPath(); x.arc(sx, sy < 0 ? sy + H : sy, 1.4 + rnd(i + 5) * 2.4, 0, 7); x.fill(); } x.restore();
+}
+// Заставка главы: большая цифра и название, затем уезжает в шапку
+function chapter(t, S, n, title, icon) {
+  const a = S.start + .1, k = eo(p(t, a, a + .5)), up = eio(p(t, S.lines[1] - .5, S.lines[1]));
+  x.save(); x.translate(CX, 760 - up * 200); x.globalAlpha *= 1 - up;
+  T(String(n).padStart(2, '0'), 0, -150, 220 * (2 - k), { w: 900, fill: grad(-200, 0, 200, 0), glow: C.blue, a: k });
+  T(icon, 0, 30, 90, { w: 400, a: k });
+  T(title, 0, 170, 70, { w: 900, a: eo(p(t, a + .25, a + .7)), lh: 1.1 });
+  x.restore();
+  if (up > 0) T(String(n).padStart(2, '0') + '  ·  ' + title.replace('\n', ' '), CX, 300, 44, { w: 800, fill: C.cyan, a: up });
+  // Индикатор глав 1..6
+  for (let i = 1; i <= 6; i++) { const on = i === n; x.fillStyle = on ? C.cyan : i < n ? C.blue2 : '#ffffff22'; rr(CX - 195 + (i - 1) * 66, 236, 54, 10, 5); x.fill(); }
+  return up;
+}
+
+const SCN = {
+  hook(t, S) {
+    // Ночной город, окна гаснут — а сервер светится
+    T('03:00', CX, 330, 130, { fill: grad(380, 0, 700, 0), glow: C.blue, a: eo(p(t, .2, .8)) });
+    x.save(); x.fillStyle = '#E0F2FE'; x.shadowColor = '#E0F2FE'; x.shadowBlur = 60; x.beginPath(); x.arc(820, 470, 46, 0, 7); x.fill(); x.restore();
+    for (let i = 0; i < 9; i++) { const bw = 70 + rnd(i) * 40, bh = 220 + rnd(i + 3) * 360, bx = 190 + i * 80, by = 1180 - bh;
+      x.fillStyle = '#0B1530'; x.fillRect(bx, by, bw, bh);
+      for (let r = 0; r < bh / 40 - 1; r++) for (let c = 0; c < 2; c++) { const on = rnd(i * 50 + r * 3 + c) > .55 && t < 3 + rnd(i + r) * 3; if (on) { x.fillStyle = '#FDE68A'; x.fillRect(bx + 14 + c * 30, by + 20 + r * 40, 16, 18); } } }
+    const b = eb(p(t, 3.2, 3.8));
+    if (b) { x.save(); x.translate(CX, 1000); x.scale(b, b); card(0, 0, 360, 200, { glow: C.cyan, fill: '#0B254F' }); T('🏢', -110, 0, 80, { w: 400 }); T('ваш\nбизнес', 60, -26, 46, { w: 800 }); x.restore(); }
+    const L1 = S.lines[1];
+    [['💬', 'Ответ клиенту', -1], ['🛒', 'Заказ принят', 0], ['📊', 'Отчёт готов', 1]].forEach(([ic, s, k], i) => {
+      const q = eb(p(t, L1 + .2 + i * .7, L1 + .6 + i * .7)); if (!q) return;
+      x.save(); x.translate(CX + k * 0, 620 + i * 110); x.scale(q, q); card(0, 0, 520, 90, { fill: '#0B3B2A', stroke: C.ok }); T(ic + '  ' + s, 0, 2, 40, { w: 800 }); check(220, 0, .8); x.restore(); });
+  },
+  intro(t, S) {
+    const a = S.lines[0], g = p(t, a + 1.2, a + 1.9), word = 'АВТОМАТИЗАЦИЯ';
+    T('Это не фантастика.', CX, 360, 58, { w: 700, fill: C.dim, a: eo(p(t, a, a + .4)) * (1 - p(t, S.lines[1] - .4, S.lines[1])) });
+    if (g > 0 && t < S.lines[1]) { x.save(); x.font = `900 100px ${F}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.shadowColor = C.blue; x.shadowBlur = 40; x.fillStyle = grad(120, 0, 960, 0);
+      const s = word.slice(0, Math.ceil(g * word.length)); x.fillText(g < 1 ? s + '█' : s, CX, 520); x.restore(); }
+    const lb = eb(p(t, a + 2.6, a + 3.2));
+    if (lb) { for (let i = 0; i < 24; i++) { const ang = i / 24 * 7, len = 200 + 480 * eo(p(t, a + 2.6, a + 3.4)); x.save(); x.globalAlpha *= .22 * (1 - p(t, a + 3, a + 5)); x.strokeStyle = i % 2 ? C.cyan : C.blue; x.lineWidth = 6; x.beginPath(); x.moveTo(CX + Math.cos(ang) * 150, 800 + Math.sin(ang) * 150); x.lineTo(CX + Math.cos(ang) * len, 800 + Math.sin(ang) * len); x.stroke(); x.restore(); }
+      const up = eio(p(t, S.lines[1] - .3, S.lines[1] + .3));
+      logo(CX - 30 - up * 210, 800 - up * 400, (2.2 - up * 1.4) * lb); T('Nextin', CX + up * 60, 1010 - up * 606, 140 - up * 50, { w: 900, glow: C.blue, a: eo(p(t, a + 2.8, a + 3.2)) }); }
+    const L = S.lines[1];
+    kinetic([['ваш'], ['цифровой', C.cyan], ['партнёр']], CX, 560, 70, L + .1, .25, t);
+    T('📍 Ташкент', CX, 680, 46, { w: 700, fill: C.dim, a: eo(p(t, L + .9, L + 1.3)) });
+    const steps = ['💡 Идея', '🛠 Разработка', '🚀 Продукт']; steps.forEach((s, i) => pop(t, L + 1.8 + i * .5, CX, 780 + i * 140, () => card(0, 0, 520, 110, {}) || T(s, 0, 2, 46, { w: 800 })));
+    for (let i = 0; i < 2; i++) { const q = p(t, L + 2.1 + i * .5, L + 2.4 + i * .5); if (q) { x.fillStyle = C.cyan; x.fillRect(CX - 3, 835 + i * 140, 6, 30 * q); } }
+    pop(t, L + 3.6, CX, 1180, () => chip('под ключ', 0, 0, C.blue2, 44));
+  },
+  what(t, S) {
+    const a = S.lines[0];
+    T('Автоматизация =', CX, 330, 64, { w: 800, a: eo(p(t, a, a + .4)) });
+    // Рутина падает в шестерёнку и выходит ростом
+    const tasks = ['📄', '📞', '🧾', '✉️', '📋', '🗂'];
+    tasks.forEach((ic, i) => { const t0 = a + .3 + i * .45, q = p(t, t0, t0 + 1.4); if (q <= 0 || q >= 1) return;
+      const X = 300 + (i % 3) * 70 - q * 60, Y = 450 + eio(q) * 300; x.save(); x.globalAlpha *= 1 - q * .8; T(ic, X, Y, 70, { w: 400 }); x.restore(); });
+    x.save(); x.translate(380, 820); x.rotate(t * 1.6); x.fillStyle = grad(-100, -100, 100, 100);
+    x.beginPath(); for (let i = 0; i < 16; i++) { const ang = i * Math.PI / 8, R = i % 2 ? 90 : 112; x.lineTo(Math.cos(ang) * R, Math.sin(ang) * R); } x.closePath(); x.fill();
+    x.fillStyle = C.bg2; x.beginPath(); x.arc(0, 0, 40, 0, 7); x.fill(); x.restore();
+    T('рутина →\nпрограмма', 380, 1010, 40, { w: 700, fill: C.dim, a: eo(p(t, a + .8, a + 1.2)) });
+    const g = eo(p(t, a + 2.2, a + 3.4));
+    if (g) { x.save(); x.strokeStyle = C.ok; x.lineWidth = 12; x.lineCap = 'round'; x.shadowColor = C.ok; x.shadowBlur = 30; x.beginPath();
+      for (let i = 0; i <= 40 * g; i++) { const q = i / 40, X = 560 + q * 300, Y = 980 - q * 420 + Math.sin(q * 12) * 20; i ? x.lineTo(X, Y) : x.moveTo(X, Y); } x.stroke(); x.restore();
+      T('💰', 870, 520, 90, { w: 400, a: p(t, a + 3.2, a + 3.6) }); T('люди —\nна рост', 720, 1010, 40, { w: 700, fill: C.ok, a: p(t, a + 3, a + 3.4) }); }
+    kinetic([['Давайте'], ['покажу', C.cyan], ['👇']], CX, 1200, 62, S.lines[1], .2, t);
+  },
+  agents(t, S) {
+    const up = chapter(t, S, 1, 'Чат-боты\nи ИИ-агенты', '🤖'); if (up < .3) return;
+    const [, l1, l2, l3] = S.lines, k = eo(p(t, l1 - .3, l1 + .3));
+    x.save(); x.globalAlpha *= k; x.translate(0, (1 - k) * 300);
+    const greet = [['Assalomu alaykum!', 'UZ'], ['Здравствуйте!', 'RU'], ['Hello!', 'EN']], gi = t < l2 + .8 ? 1 : Math.floor((t - l2 - .8) / 1.1) % 3;
+    phone(CX, 830, 560, 820, (w, h) => {
+      x.fillStyle = '#17213B'; x.fillRect(0, 0, w, 130); x.fillStyle = C.blue2; x.beginPath(); x.arc(64, 82, 32, 0, 7); x.fill(); T('🤖', 64, 84, 32, { w: 400 });
+      T('Ассистент компании', 112, 70, 30, { align: 'left', w: 700 }); T('онлайн 24/7', 112, 104, 24, { align: 'left', w: 500, fill: C.ok });
+      let y = 160;
+      y += msg(w - 22, y, 380, greet[gi][0] + ' Чем помочь?', true, eo(p(t, l1 + .4, l1 + .7))) + 16;
+      y += msg(22, y, 400, 'Сколько стоит доставка в Чиланзар?', false, eo(p(t, l2 + .2, l2 + .5))) + 16;
+      const r = eo(p(t, l2 + 1.6, l2 + 1.9)); y += msg(w - 22, y, 430, 'Доставка 15 000 сум, привезём за час. Оформить заказ?', true, r) + 16;
+      if (r) pop(t, l2 + 1.7, w - 80, y - 116 - 12, () => chip('⚡ 1 сек', 0, 0, C.ok, 22));
+      y += msg(22, y, 230, 'Да, оформляйте', false, eo(p(t, l3 + .1, l3 + .4))) + 16;
+    });
+    x.restore();
+    [['Telegram', C.tg], ['WhatsApp', C.wa], ['Сайт', C.blue2]].forEach(([s, col], i) => pop(t, l1 + 1.6 + i * .35, 290 + i * 250, 380, () => chip(s, 0, 0, col, 30)));
+    [['UZ', 0], ['RU', 1], ['EN', 2]].forEach(([s, i]) => { const on = gi === i && t > l2 + .8; pop(t, l2 + .3 + i * .25, 920, 600 + i * 120, () => { x.fillStyle = on ? C.cyan : '#0B254F'; x.strokeStyle = C.cyan; x.lineWidth = 4; x.beginPath(); x.arc(0, 0, 48, 0, 7); x.fill(); x.stroke(); T(s, 0, 3, 34, { w: 900, fill: on ? '#04070F' : C.txt }); }); });
+    const hand = eio(p(t, l3 + 1.2, l3 + 2.2));
+    if (hand > 0) { x.save(); x.globalAlpha *= clamp(hand * 3); x.translate(CX, 1170 - hand * 40); card(0, 0, 600, 110, { fill: '#0B3B2A', stroke: C.ok, glow: C.ok }); T('👨‍💼 Заявка у менеджера', 0, 2, 40, { w: 800 }); x.restore(); }
+  },
+  speech(t, S) {
+    const up = chapter(t, S, 2, 'Анализ\nзвонков', '🎙'); if (up < .3) return;
+    const [, l1, l2] = S.lines;
+    x.save(); x.strokeStyle = grad(SX, 0, SX + SW, 0); x.lineWidth = 6; x.lineCap = 'round';
+    for (let i = 0; i < 40; i++) { const hgt = (14 + 80 * Math.abs(Math.sin(i * .7 + t * 9) * Math.sin(i * .23 + t * 3))) * eo(p(t, l1 - .2, l1 + .3)); const X = SX + 20 + i * 17.5; x.beginPath(); x.moveTo(X, 470 - hgt); x.lineTo(X, 470 + hgt); x.stroke(); }
+    x.restore();
+    [['Поздоровался', false], ['Предложил товар', false], ['Довёл до продажи', true]].forEach(([s, bad], i) => pop(t, l1 + 1.6 + i * 1.1, CX, 630 + i * 110, () => { card(0, 0, 600, 96, {}); check(-240, 0, .9, C.ok, bad); T(s, 20, 2, 40, { w: 700 }); }));
+    const m = [['Азиз', .92, C.ok], ['Дилноза', .81, C.ok], ['Тимур', .48, C.warn]];
+    m.forEach(([n, v, col], i) => { const q = eo(p(t, l2 + .3 + i * .3, l2 + 1.2 + i * .3)); if (!q) return; const Y = 1030 + i * 80;
+      T(n, SX + 10, Y, 36, { align: 'left', w: 700, a: q }); x.fillStyle = '#ffffff14'; rr(SX + 210, Y - 22, 500, 44, 22); x.fill(); x.fillStyle = col; rr(SX + 210, Y - 22, 500 * v * q, 44, 22); x.fill();
+      T(Math.round(v * 100 * q) + '%', SX + 690, Y + 2, 30, { align: 'right', w: 800, fill: '#04070F' }); });
+    if (t > l2 + 2.2) T('пример', CX, 975, 26, { w: 500, fill: C.dim });
+  },
+  crm(t, S) {
+    const up = chapter(t, S, 3, 'Система продаж\nи учёта', '📊'); if (up < .3) return;
+    const [, l1, l2] = S.lines, cols = ['Новые', 'В работе', 'Оплачено'], colX = [300, 540, 780];
+    cols.forEach((c, i) => pop(t, l1 - .2 + i * .15, colX[i], 640, () => { x.fillStyle = '#ffffff0c'; rr(-110, -210, 220, 640, 24); x.fill(); T(c, 0, -170, 30, { w: 800, fill: [C.cyan, C.gold, C.ok][i] }); }));
+    for (let j = 0; j < 6; j++) { const t0 = l1 + .3 + j * .45; if (t < t0) continue; const mv = eio(p(t, t0 + 1.2, t0 + 2.2)), mv2 = eio(p(t, t0 + 2.6, t0 + 3.4)) * (j % 2 === 0);
+      const X = colX[0] + (colX[1] - colX[0]) * mv + (colX[2] - colX[1]) * mv2, slot = j % 4, Y = 520 + slot * 100;
+      pop(t, t0, X, Y, () => { card(0, 0, 190, 80, { r: 18, fill: '#132552' }); T('Заявка #' + (1041 + j), 0, -12, 22, { w: 700 }); T((150 + j * 37) + ' 000 сум', 0, 18, 20, { w: 500, fill: C.dim }); }, .25); }
+    const n = eb(p(t, l2 + .2, l2 + .7));
+    if (n) { x.save(); x.translate(CX, 1080 + (1 - clamp(n)) * 200); x.globalAlpha *= clamp(n); card(0, 0, 700, 230, { fill: '#F8FAFCee', stroke: false, r: 36 });
+      logo(-290, -60, .4); T('Отчёт за сегодня · 21:00', -240, -64, 30, { align: 'left', w: 800, fill: '#0F172A' });
+      [['Заявки', '47'], ['Продажи', '12'], ['Проседает', 'Instagram']].forEach(([k, v], i) => { T(k, -270 + i * 230, 10, 24, { align: 'left', w: 600, fill: '#475569' }); T(v, -270 + i * 230, 52, 36, { align: 'left', w: 900, fill: i === 2 ? C.bad : '#0F172A' }); });
+      x.restore(); }
+  },
+  web(t, S) {
+    const up = chapter(t, S, 4, 'Сайты и\nинтернет-магазины', '🌐'); if (up < .3) return;
+    const l1 = S.lines[1], a = S.lines[1] - .6, bx = SX - 10, by = 360, bw = 740, bh = 620;
+    pop(t, a, bx + bw / 2, by + bh / 2, () => { card(0, 0, bw, bh, { r: 28, fill: '#0F172A' }); x.fillStyle = '#1E293B'; rr(-bw / 2, -bh / 2, bw, 54, 28); x.fill(); ['#F87171', '#FBBF24', '#34D399'].forEach((c, i) => { x.fillStyle = c; x.beginPath(); x.arc(-bw / 2 + 32 + i * 30, -bh / 2 + 27, 9, 0, 7); x.fill(); }); T('yourshop.uz', 0, -bh / 2 + 28, 24, { w: 600, fill: C.dim }); });
+    const blocks = [[0, 80, bw - 60, 60, C.blue2], [0, 190, bw - 60, 140, '#1E3A8A'], [-230, 410, 200, 200, '#132552'], [0, 410, 200, 200, '#132552'], [230, 410, 200, 200, '#132552']];
+    blocks.forEach(([dx, dy, w, h, col], i) => pop(t, a + .4 + i * .25, bx + bw / 2 + dx, by + dy + h / 2 - 20, () => { x.fillStyle = col; rr(-w / 2, -h / 2, w, h, 16); x.fill(); if (i === 1) T('Новая коллекция', 0, 0, 40, { w: 900 }); if (i >= 2) { T(['👟', '👜', '⌚'][i - 2], 0, -30, 60, { w: 400 }); x.fillStyle = C.blue2; rr(-70, 50, 140, 40, 20); x.fill(); T('Купить', 0, 71, 22, { w: 800 }); } }, .3));
+    pop(t, l1 + .3, 860, 990, () => phone(0, 0, 200, 380, (w, h) => { x.fillStyle = C.blue2; x.fillRect(0, 30, w, 40); x.fillStyle = '#1E3A8A'; x.fillRect(10, 90, w - 20, 90); for (let i = 0; i < 2; i++) { x.fillStyle = '#132552'; x.fillRect(10 + i * 80, 195, 70, 90); } }));
+    [['💳 Оплата', C.ok], ['🌍 UZ · RU · EN', C.violet], ['🔎 SEO', C.warn]].forEach(([s, col], i) => pop(t, l1 + 2.2 + i * .9, 380, 1060 + i * 95, () => chip(s, 0, 0, col, 36)));
+  },
+  apps(t, S) {
+    const up = chapter(t, S, 5, 'Мобильные\nприложения', '📱'); if (up < .3) return;
+    const l1 = S.lines[1], k = eo(p(t, l1 - .6, l1));
+    x.save(); x.globalAlpha *= k; phone(CX, 810 + (1 - k) * 300, 500, 860, (w, h) => {
+      x.fillStyle = grad(0, 0, w, 0); x.fillRect(0, 0, w, 220); logo(70, 120, .5); T('Ваш бренд', 130, 120, 38, { align: 'left', w: 900 });
+      x.fillStyle = '#ffffff10'; rr(24, 250, w - 48, 170, 24); x.fill(); T('Бонусы', 50, 290, 26, { align: 'left', w: 600, fill: C.dim }); T(Math.round(1250 * eo(p(t, l1 + 1.2, l1 + 2.2))) + ' баллов', 50, 350, 46, { align: 'left', w: 900, fill: C.gold });
+      [['🛒', 'Заказы'], ['📅', 'Запись'], ['🎁', 'Акции'], ['💬', 'Чат']].forEach(([ic, s], i) => { const X = 24 + (i % 2) * ((w - 60) / 2 + 12), Y = 450 + Math.floor(i / 2) * 170; pop(t, l1 + .2 + i * .35, X + (w - 60) / 4, Y + 75, () => { x.fillStyle = '#132552'; rr(-(w - 60) / 4, -75, (w - 60) / 2, 150, 24); x.fill(); T(ic, 0, -20, 50, { w: 400 }); T(s, 0, 40, 28, { w: 700 }); }); });
+    }); x.restore();
+    ['🔔 Ваш заказ уже в пути', '🎁 Скидка 10% для вас', '📅 Напоминаем о записи завтра'].forEach((s, i) => { const t0 = l1 + 2.4 + i * .9, q = eb(p(t, t0, t0 + .4)); if (!q || t > t0 + 2.4) return;
+      x.save(); x.translate(CX, 430); x.globalAlpha *= clamp(q) * (1 - p(t, t0 + 2, t0 + 2.4)); x.translate(0, (1 - clamp(q)) * -120); card(0, 0, 640, 96, { fill: '#F8FAFCee', stroke: false, r: 28 }); T(s, 0, 2, 34, { w: 700, fill: '#0F172A' }); x.restore(); });
+  },
+  ai(t, S) {
+    const up = chapter(t, S, 6, 'ИИ под\nвашу задачу', '🧠'); if (up < .3) return;
+    const l1 = S.lines[1];
+    x.save(); x.translate(CX, 650); const pulse = 1 + .05 * Math.sin(t * 4); x.scale(pulse, pulse);
+    const r = x.createRadialGradient(0, 0, 10, 0, 0, 170); r.addColorStop(0, '#38BDF8'); r.addColorStop(1, '#38BDF800'); x.fillStyle = r; x.beginPath(); x.arc(0, 0, 170, 0, 7); x.fill();
+    T('🧠', 0, 6, 120, { w: 400 }); x.restore();
+    ['Прайс.pdf', 'Договор.docx', 'Регламент.pdf', 'FAQ.xlsx'].forEach((d, i) => { const t0 = l1 - .4 + i * .4, q = eio(p(t, t0, t0 + 1.2)); if (q <= 0) return;
+      const ang = i * 1.57 + .8, X = CX + Math.cos(ang) * 380 * (1 - q), Y = 650 + Math.sin(ang) * 380 * (1 - q); x.save(); x.globalAlpha *= 1 - q * .9; x.translate(X, Y); card(0, 0, 230, 70, { r: 16, fill: '#132552' }); T('📄 ' + d, 0, 2, 24, { w: 700 }); x.restore(); });
+    let y = 940; y += msg(SX + 20, y, 520, 'Какой срок гарантии на ремонт?', false, eo(p(t, l1 + 2.2, l1 + 2.5)), null, 34) + 18;
+    const a2 = eo(p(t, l1 + 3.2, l1 + 3.5)); y += msg(SX + SW - 20, y, 560, 'Гарантия 12 месяцев с даты работ.', true, a2, null, 34) + 10;
+    if (a2) pop(t, l1 + 3.5, SX + SW - 160, y + 26, () => chip('📄 Регламент.pdf, п. 4.2', 0, 0, '#1E293B', 22));
+  },
+  industries(t, S) {
+    const L = S.lines;
+    T('Что это значит', CX, 330, 76, { w: 900, a: eo(p(t, L[0], L[0] + .4)) * (1 - .6 * p(t, L[1] - .3, L[1])) });
+    T('для вашего бизнеса?', CX, 420, 76, { w: 900, fill: grad(200, 0, 880, 0), a: eo(p(t, L[0] + .3, L[0] + .7)) * (1 - .6 * p(t, L[1] - .3, L[1])) });
+    const ind = [['🍽', 'Ресторан', 'Заказы и бронь столиков — ботом'], ['🏥', 'Клиника', 'Запись онлайн и напоминания о визите'], ['🛍', 'Магазин', 'Сайт + бот + учёт товара — одна система'], ['🎓', 'Учебный центр', 'Запись, оплата и расписание без звонков'], ['🏠', 'Недвижимость', 'Агент отбирает реальных покупателей']];
+    ind.forEach(([ic, n, d], i) => { const t0 = L[i + 1], t1 = L[i + 2] ?? S.end; const q = eio(p(t, t0 - .25, t0 + .25)), out = eio(p(t, t1 - .25, t1 + .15));
+      if (q <= 0 || (out >= 1 && i < 4)) return; const X = CX + (1 - q) * 900 - (i < 4 ? out * 900 : 0);
+      x.save(); x.translate(X, 840); x.rotate((1 - q) * .15); card(0, 0, 720, 620, { glow: C.blue, fill: '#0E1C40' });
+      T(ic, 0, -150, 170, { w: 400 }); T(n, 0, 40, 72, { w: 900, fill: grad(-250, 0, 250, 0) }); wrap(d, 42, 600, 700).forEach((l, k) => T(l, 0, 150 + k * 54, 42, { w: 700 })); x.restore(); });
+    for (let i = 0; i < 5; i++) { const on = t >= L[i + 1] - .25; x.fillStyle = on ? C.cyan : '#ffffff22'; x.beginPath(); x.arc(CX - 120 + i * 60, 1220, 10, 0, 7); x.fill(); }
+  },
+  process(t, S) {
+    const L = S.lines;
+    kinetic([['Как'], ['мы'], ['работаем?', C.cyan]], CX, 320, 72, L[0], .2, t);
+    const steps = ['Изучаем бизнес', 'Проектируем', 'Показываем версии', 'Запускаем', 'Обучаем команду', 'Поддерживаем'];
+    const times = [L[1] + .3, L[1] + 1.8, L[1] + 3.6, L[2] + .1, L[2] + 1.1, L[2] + 2.4];
+    x.save(); x.strokeStyle = '#ffffff1a'; x.lineWidth = 8; x.beginPath(); x.moveTo(250, 450); x.lineTo(250, 1200); x.stroke();
+    const prog = steps.reduce((a, s, i) => t >= times[i] ? i : a, -1);
+    if (prog >= 0) { const q = eo(p(t, times[prog], times[prog] + .5)); x.strokeStyle = grad(0, 450, 0, 1200); x.beginPath(); x.moveTo(250, 450); x.lineTo(250, 450 + Math.min(5, prog + q) * 150); x.stroke(); }
+    x.restore();
+    steps.forEach((s, i) => { const Y = 450 + i * 150, on = t >= times[i]; pop(t, L[0] + .3 + i * .1, 250, Y, () => { x.fillStyle = on ? C.cyan : '#132552'; x.beginPath(); x.arc(0, 0, 36, 0, 7); x.fill(); T(String(i + 1), 0, 3, 34, { w: 900, fill: on ? '#04070F' : C.dim }); }, .3);
+      T(s, 320, Y + 2, 46, { align: 'left', w: on ? 800 : 600, fill: on ? C.txt : '#ffffff55', a: eo(p(t, L[0] + .3 + i * .1, L[0] + .6 + i * .1)) }); });
+  },
+  why(t, S) {
+    const a = S.lines[0];
+    pop(t, a + .1, CX, 520, () => { card(0, 0, 680, 300, { glow: C.ok, fill: '#0B3B2A', stroke: C.ok }); T('⏱', -220, 0, 120, { w: 400 }); T('Сдаём\nв срок', 80, -40, 70, { w: 900 }); });
+    pop(t, a + 2.2, CX, 950, () => { card(0, 0, 680, 340, { glow: C.cyan, fill: '#0B254F', stroke: C.cyan }); T('1 месяц', 0, -70, 100, { w: 900, fill: grad(-250, 0, 250, 0) }); T('поддержки бесплатно', 0, 40, 50, { w: 800 }); T('после запуска', 0, 110, 38, { w: 600, fill: C.dim }); });
+  },
+  cta(t, S) {
+    const [l0, l1, l2] = S.lines;
+    T('А что можно', CX, 360, 72, { w: 900, a: eo(p(t, l0, l0 + .4)) * (1 - p(t, l1 - .3, l1)) });
+    T('автоматизировать у вас?', CX, 450, 64, { w: 900, fill: grad(150, 0, 930, 0), a: eo(p(t, l0 + .4, l0 + .8)) * (1 - p(t, l1 - .3, l1)) });
+    if (t < l1 - .3) return;
+    logo(CX - 215, 300, .9 * eb(p(t, l1 - .2, l1 + .3))); T('Nextin', CX + 50, 304, 92, { w: 900, a: eo(p(t, l1 - .2, l1 + .2)) });
+    T('Первая консультация', CX, 470, 64, { w: 800, a: eo(p(t, l1 + .2, l1 + .6)) });
+    T('БЕСПЛАТНО', CX, 575, 100, { w: 900, fill: grad(250, 0, 830, 0, C.cyan, '#E0F2FE'), glow: C.cyan, a: eo(p(t, l1 + 1.2, l1 + 1.6)) });
+    const pa = eb(p(t, l1 + 1.8, l1 + 2.2));
+    if (pa) { const pl = 1 + .04 * Math.sin(t * 7); x.save(); x.translate(CX, 770); x.scale(pa * pl, pa * pl); x.shadowColor = C.cyan; x.shadowBlur = 60; x.fillStyle = grad(-340, 0, 340, 0); rr(-340, -80, 680, 160, 80); x.fill(); x.shadowBlur = 0; T('Пишите в Direct →', 0, 4, 58, { w: 900 }); x.restore();
+      const sw = ((t - l1) * .6) % 1; x.save(); x.beginPath(); x.roundRect(CX - 340 * pa, 690, 680 * pa, 160, 80); x.clip(); const gx = CX - 500 + sw * 1000, lg = x.createLinearGradient(gx - 80, 0, gx + 80, 0); lg.addColorStop(0, '#ffffff00'); lg.addColorStop(.5, '#ffffff66'); lg.addColorStop(1, '#ffffff00'); x.fillStyle = lg; x.fillRect(0, 690, W, 160); x.restore(); }
+    const ca = eo(p(t, l1 + 2.6, l1 + 3.0));
+    x.save(); x.globalAlpha *= ca; x.fillStyle = '#ffffff0d'; rr(SX, 910, SW, 330, 40); x.fill(); x.restore();
+    T('📞  +998 77 777 16 68', CX, 985, 54, { w: 800, a: ca }); T('✈  @dosd_nextin', CX, 1075, 50, { w: 700, fill: C.tg, a: ca }); T('🌐  nextin.uz', CX, 1165, 50, { w: 700, fill: C.cyan, a: ca });
+  },
+};
+
+function captions(t) {
+  const ph = PH.find(s => t >= s[0] - .05 && t <= s[1] + .25); if (!ph) return;
+  const [s0, s1, text] = ph, words = text.split(' '), total = words.reduce((n, w) => n + w.length + 1, 0);
+  let acc = 0, cur = words.length - 1; for (let k = 0; k < words.length; k++) { acc += words[k].length + 1; if (t < s0 + (s1 - s0) * acc / total) { cur = k; break; } }
+  x.save(); x.font = `800 42px ${F}`; const lines = []; let line = [];
+  for (const w of words) { if (x.measureText([...line, w].join(' ')).width > SW && line.length) { lines.push(line); line = []; } line.push(w); } lines.push(line);
+  const Y0 = 1400 - (lines.length - 1) * 54; let idx = 0;
+  lines.forEach((L, li) => { let cx = CX - x.measureText(L.join(' ')).width / 2;
+    L.forEach(w => { x.lineJoin = 'round'; x.lineWidth = 10; x.strokeStyle = '#000000d9'; x.textBaseline = 'middle'; x.strokeText(w, cx, Y0 + li * 54);
+      x.fillStyle = idx === cur ? '#FDE047' : (idx < cur ? '#fff' : '#ffffffb3'); x.fillText(w, cx, Y0 + li * 54); cx += x.measureText(w + ' ').width; idx++; }); });
+  x.restore();
+}
+function draw(t) {
+  background(t);
+  for (const id of ORDER) { const S = SC[id]; const k = Math.min(clamp((t - S.start + .02) / .2), clamp((S.end + .02 - t) / .2)); if (k <= 0) continue; x.save(); x.globalAlpha = k; SCN[id](t, S); x.restore(); }
+  captions(t);
+  let zoom = 1, gl = 0; ORDER.slice(1).forEach(id => { const d = t - SC[id].start; if (d >= -.08 && d < .4) zoom += .05 * (1 - p(d, 0, .4)); if (Math.abs(d) < .1) gl = Math.max(gl, 1 - Math.abs(d) / .1); });
+  zoom += .012 * Math.sin(t * .8);   // лёгкое «дыхание» камеры
+  o.save(); o.fillStyle = C.bg1; o.fillRect(0, 0, W, H); o.translate(CX, H / 2); o.scale(zoom, zoom); o.translate(-CX, -H / 2); o.drawImage(buf, 0, 0); o.restore();
+  if (gl > 0) { for (let i = 0; i < 9; i++) { const y = Math.floor(rnd(i + Math.floor(t * 30)) * H), hg = 30 + rnd(i * 3 + t) * 120, dx = (rnd(i + 7 + t) - .5) * 120 * gl; o.drawImage(buf, 0, y, W, hg, dx, y, W, hg); }
+    o.save(); o.globalCompositeOperation = 'lighter'; o.globalAlpha = .3 * gl; o.drawImage(buf, 14 * gl, 0); o.restore(); }
+  const vg = o.createRadialGradient(CX, H / 2, 500, CX, H / 2, 1200); vg.addColorStop(0, '#00000000'); vg.addColorStop(1, '#00000088'); o.fillStyle = vg; o.fillRect(0, 0, W, H);
+}
+window.setup = d => { PH = d.phrases; d.scenes.forEach(s => { SC[s.id] = s; ORDER.push(s.id); }); DUR = d.duration; return DUR; };
+window.draw = draw;
+document.fonts.load(`800 40px Inter`).then(() => { window.ready = true; });
+</script></body></html>
