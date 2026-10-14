@@ -1,0 +1,299 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#04070F}canvas{display:block}</style></head>
+<body><canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// Рекламный Reels Nextin v2. draw(t) рисует кадр на секунде t. Тайминги фраз — scenes.json (setup()).
+const W = 1080, H = 1920, CX = 540, SX = 180, SW = 720;
+const out = document.getElementById('c'), o = out.getContext('2d');
+const buf = document.createElement('canvas'); buf.width = W; buf.height = H;
+const x = buf.getContext('2d');
+const C = { bg1: '#04070F', bg2: '#0A1A3F', blue: '#0084FF', blue2: '#0059FF', cyan: '#38BDF8', ok: '#34D399', bad: '#F43F5E', warn: '#F97316', txt: '#F8FAFC', dim: '#94A3B8', card: '#0E1C40', tg: '#229ED9' };
+const F = 'Inter, sans-serif';
+let P = [], DUR = 34;
+
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const p = (t, a, b) => clamp((t - a) / (b - a));
+const eo = v => 1 - Math.pow(1 - v, 3);
+const eio = v => v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2;
+const eb = v => { const s = 1.7; return v <= 0 ? 0 : 1 + (s + 1) * Math.pow(v - 1, 3) + s * Math.pow(v - 1, 2); };
+const ps = i => P[i] ? P[i][0] : DUR;               // старт фразы i (с учётом offset)
+const rnd = s => { const v = Math.sin(s * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+
+function grad(x0, y0, x1, y1, a = C.blue2, b = C.cyan) { const g = x.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, a); g.addColorStop(1, b); return g; }
+function rr(X, Y, w, h, r) { x.beginPath(); x.roundRect(X, Y, w, h, r); }
+function T(s, X, Y, size, op = {}) {
+  x.save(); x.font = `${op.w || 800} ${size}px ${F}`; x.textAlign = op.align || 'center'; x.textBaseline = 'middle';
+  x.globalAlpha *= op.a ?? 1; x.fillStyle = op.fill || C.txt;
+  if (op.glow) { x.shadowColor = op.glow; x.shadowBlur = 40; }
+  s.split('\n').forEach((l, i) => x.fillText(l, X, Y + i * size * (op.lh || 1.15)));
+  x.restore();
+}
+function wrap(s, size, maxW, w = 700) {
+  x.save(); x.font = `${w} ${size}px ${F}`; const L = []; let line = '';
+  for (const word of s.split(' ')) { const t = line ? line + ' ' + word : word; if (x.measureText(t).width > maxW && line) { L.push(line); line = word; } else line = t; }
+  if (line) L.push(line); x.restore(); return L;
+}
+// Слова появляются по одному с «пружиной»
+function kinetic(words, X, Y, size, t0, step, t, op = {}) {
+  x.save(); x.font = `${op.w || 900} ${size}px ${F}`;
+  const sp = size * .42, ws = words.map(w => x.measureText(w[0]).width), total = ws.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+  let cx = X - total / 2; x.restore();
+  words.forEach(([w, col], i) => {
+    const a = eb(p(t, t0 + i * step, t0 + i * step + .35));
+    if (a > 0) { x.save(); x.translate(cx + ws[i] / 2, Y + (1 - clamp(a)) * 40); x.scale(a, a); T(w, 0, 0, size, { w: op.w || 900, fill: col || C.txt, glow: op.glow }); x.restore(); }
+    cx += ws[i] + sp;
+  });
+}
+function logo(X, Y, s, a = 1) {
+  x.save(); x.translate(X, Y); x.scale(s, s); x.globalAlpha *= a;
+  x.fillStyle = grad(-60, -60, 60, 60, '#1A6BFF', C.blue);
+  x.beginPath(); x.moveTo(-58, 0); x.lineTo(-14, -44); x.lineTo(4, -26); x.lineTo(-22, 0); x.lineTo(4, 26); x.lineTo(-14, 44); x.closePath(); x.fill();
+  x.fillStyle = grad(-20, -60, 60, 60, C.blue, C.cyan);
+  x.beginPath(); x.moveTo(-6, 0); x.lineTo(32, -38); x.lineTo(70, 0); x.lineTo(32, 38); x.closePath(); x.fill();
+  x.restore();
+}
+function check(X, Y, s = 1, col = C.ok) {
+  x.save(); x.translate(X, Y); x.scale(s, s); x.fillStyle = col; x.beginPath(); x.arc(0, 0, 26, 0, 7); x.fill();
+  x.strokeStyle = '#04120C'; x.lineWidth = 7; x.lineCap = 'round'; x.beginPath(); x.moveTo(-11, 1); x.lineTo(-3, 9); x.lineTo(12, -8); x.stroke(); x.restore();
+}
+// Телефон: рамка + экран, контент рисует cb в координатах экрана
+function phone(X, Y, w, h, cb, tilt = 0) {
+  x.save(); x.translate(X, Y); x.rotate(tilt);
+  x.shadowColor = '#0084FF66'; x.shadowBlur = 60; x.fillStyle = '#0B1020'; rr(-w / 2, -h / 2, w, h, 70); x.fill(); x.shadowBlur = 0;
+  x.strokeStyle = '#2A3A66'; x.lineWidth = 6; rr(-w / 2, -h / 2, w, h, 70); x.stroke();
+  x.save(); rr(-w / 2 + 18, -h / 2 + 18, w - 36, h - 36, 54); x.clip();
+  x.fillStyle = '#0F172A'; x.fillRect(-w / 2, -h / 2, w, h);
+  x.translate(-w / 2 + 18, -h / 2 + 18); cb(w - 36, h - 36); x.restore();
+  x.fillStyle = '#000'; rr(-70, -h / 2 + 30, 140, 34, 17); x.fill();
+  x.restore();
+}
+function msg(X, Y, w, s, mine, a, col, size = 34) {
+  const L = wrap(s, size, w - 50, 500), h = 30 + L.length * size * 1.3;
+  x.save(); x.globalAlpha *= a; x.fillStyle = col || (mine ? C.blue2 : '#1F2A44'); rr(mine ? X - w : X, Y, w, h, 26); x.fill();
+  L.forEach((l, i) => T(l, (mine ? X - w : X) + 24, Y + 15 + size * .65 + i * size * 1.3, size, { align: 'left', w: 500 }));
+  x.restore(); return h;
+}
+
+function background(t) {
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.bg1); g.addColorStop(1, C.bg2);
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  [[260 + 120 * Math.sin(t * .5), 560, C.blue2, 720], [820 + 90 * Math.cos(t * .37), 1250, C.cyan, 640]].forEach(([X, Y, col, R]) => {
+    const r = x.createRadialGradient(X, Y, 0, X, Y, R); r.addColorStop(0, col + '33'); r.addColorStop(1, col + '00'); x.fillStyle = r; x.fillRect(0, 0, W, H);
+  });
+  // Перспективная сетка внизу
+  x.save(); x.strokeStyle = '#38BDF81a'; x.lineWidth = 2;
+  for (let i = -8; i <= 8; i++) { x.beginPath(); x.moveTo(CX + i * 40, 1050); x.lineTo(CX + i * 260, H); x.stroke(); }
+  for (let j = 0; j < 10; j++) { const q = ((j + (t * .6) % 1) / 10), y = 1050 + Math.pow(q, 2) * 870; x.globalAlpha = q; x.beginPath(); x.moveTo(0, y); x.lineTo(W, y); x.stroke(); }
+  x.restore();
+  // Частицы
+  x.save(); for (let i = 0; i < 60; i++) { const sx = rnd(i) * W, sy = (rnd(i + 99) * H - t * (20 + rnd(i + 7) * 60)) % H; x.globalAlpha = .25 + .35 * rnd(i + 3); x.fillStyle = i % 3 ? C.cyan : '#fff'; x.beginPath(); x.arc(sx, sy < 0 ? sy + H : sy, 1.5 + rnd(i + 5) * 2.5, 0, 7); x.fill(); } x.restore();
+}
+
+// A. Хук: лавина сообщений в 02:14
+function sA(t, a, b) {
+  if (t > b + .1) return;
+  const notes = ['Сколько стоит?', 'Вы работаете?', 'Есть доставка?', 'А скидка есть?', 'Ответьте пожалуйста', 'Сколько стоит?', 'Где вы находитесь?', 'Можно заказать?', 'Алло??', 'Есть в наличии?'];
+  const shake = p(t, 1.0, b) * 10;
+  x.save(); x.translate(Math.sin(t * 40) * shake, Math.cos(t * 33) * shake);
+  T('02:14', CX, 300, 120, { fill: grad(380, 0, 700, 0), glow: C.blue });
+  notes.forEach((s, i) => {
+    const ti = .15 + i * .42; const k = eb(p(t, ti, ti + .3)); if (!k) return;
+    const Y = 430 + (i % 6) * 120 + Math.floor(i / 6) * 60, X = CX + (i % 2 ? 60 : -60) + (rnd(i) - .5) * 80;
+    x.save(); x.translate(X, Y); x.scale(k, k); x.rotate((rnd(i + 4) - .5) * .12);
+    x.fillStyle = '#16213Fee'; x.strokeStyle = C.tg + 'aa'; x.lineWidth = 3; rr(-300, -48, 600, 96, 26); x.fill(); x.stroke();
+    x.fillStyle = C.tg; x.beginPath(); x.arc(-245, 0, 26, 0, 7); x.fill(); T('✈', -245, 2, 28, { w: 400 });
+    T(s, -200, 2, 38, { align: 'left', w: 600 }); x.restore();
+  });
+  const cnt = Math.min(99, Math.floor(p(t, .2, b) * 140));
+  if (cnt > 0) { x.save(); x.translate(860, 300); x.scale(1 + .1 * Math.sin(t * 20), 1 + .1 * Math.sin(t * 20)); x.fillStyle = C.bad; x.beginPath(); x.arc(0, 0, 58, 0, 7); x.fill(); T(cnt >= 99 ? '99+' : String(cnt), 0, 3, 44, { w: 900 }); x.restore(); }
+  x.restore();
+  // Текст поверх
+  x.save(); x.fillStyle = '#04070Fcc'; const ta = p(t, ps(1) - .2, ps(1)); if (ta) { x.globalAlpha *= ta; x.fillRect(0, 0, W, H); } x.restore();
+  kinetic([['Ночью.'], ['В', C.cyan], ['выходные.', C.cyan]], CX, 760, 76, ps(1), .32, t);
+  kinetic([['100'], ['раз'], ['одно'], ['и'], ['то'], ['же', C.bad]], CX, 900, 68, ps(1) + 1.0, .14, t);
+}
+// B. Что такое автоматизация
+function sB(t, a, b) {
+  if (t < a - .1 || t > b + .1) return;
+  const g = p(t, a, a + .5), word = 'АВТОМАТИЗАЦИЯ';
+  x.save(); x.font = `900 104px ${F}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+  const shown = word.slice(0, Math.ceil(g * word.length));
+  const scr = g < 1 ? shown + '█' : shown;
+  x.shadowColor = C.blue; x.shadowBlur = 40; x.fillStyle = grad(120, 0, 960, 0); x.fillText(scr, CX, 420); x.restore();
+  // Человек → робот
+  const sw = eio(p(t, a + 1.1, a + 1.9));
+  x.save(); x.translate(CX - 190, 760); x.globalAlpha = 1 - sw * .6;
+  x.fillStyle = '#334155'; x.beginPath(); x.arc(0, -60, 55, 0, 7); x.fill(); rr(-80, 10, 160, 150, 60); x.fill();
+  T('😩', 0, -60, 70, { w: 400 }); T('человек', 0, 220, 38, { w: 600, fill: C.dim }); x.restore();
+  x.save(); x.translate(CX, 760); T('→', 0, 40, 90, { fill: C.cyan, a: clamp(sw * 2) }); x.restore();
+  const rb = eb(p(t, a + 1.5, a + 2.0));
+  if (rb) { x.save(); x.translate(CX + 190, 760); x.scale(rb, rb); x.shadowColor = C.cyan; x.shadowBlur = 40; x.fillStyle = grad(-80, -120, 80, 160); x.beginPath(); x.arc(0, -60, 55, 0, 7); x.fill(); rr(-80, 10, 160, 150, 60); x.fill(); x.shadowBlur = 0; T('🤖', 0, -60, 70, { w: 400 }); T('программа', 0, 220, 38, { w: 700, fill: C.cyan }); x.restore(); }
+  kinetic([['рутину'], ['делает'], ['программа', C.cyan]], CX, 1110, 64, a + 1.2, .3, t);
+}
+// C+D. «Смотрите» → демо: бот в 02:00
+function sD(t, a, b) {
+  if (t < a - .1 || t > b + .2) return;
+  const z = eo(p(t, a, a + .6));
+  if (t < ps(4)) { const k = 1.6 - .6 * z; T('Смотрите', CX, 820, 120 * k, { fill: grad(300, 0, 780, 0), glow: C.cyan, a: 1 - p(t, ps(4) - .25, ps(4)) }); }
+  const pa = eo(p(t, ps(4) - .3, ps(4) + .3)); if (!pa) return;
+  const fly = eio(p(t, ps(5) + 2.6, ps(5) + 3.3));
+  x.save(); x.translate(0, (1 - pa) * 600); x.globalAlpha *= pa;
+  phone(CX, 820 - fly * 40, 600, 1080, (w, h) => {
+    x.fillStyle = '#17213B'; x.fillRect(0, 0, w, 150);
+    x.fillStyle = C.tg; x.beginPath(); x.arc(70, 95, 34, 0, 7); x.fill(); T('🤖', 70, 97, 34, { w: 400 });
+    T('Бот магазина', 125, 82, 32, { align: 'left', w: 700 });
+    const typing = t > ps(5) - .1 && t < ps(5) + .6;
+    T(typing ? 'печатает…' : 'онлайн 24/7', 125, 118, 24, { align: 'left', w: 500, fill: C.cyan });
+    T('02:00', w - 40, 60, 26, { align: 'right', w: 600, fill: C.dim });
+    let y = 190;
+    const m1 = eo(p(t, ps(4) + .2, ps(4) + .5));
+    if (m1) y += msg(24, y, 430, 'Добрый вечер! Можно заказать 2 пиццы на завтра к 12:00?', false, m1) + 18;
+    if (typing) { x.fillStyle = '#1F2A44'; rr(w - 154, y, 130, 64, 32); x.fill(); for (let i = 0; i < 3; i++) { x.fillStyle = '#fff'; x.save(); x.globalAlpha *= .4 + .6 * Math.abs(Math.sin(t * 8 + i)); x.beginPath(); x.arc(w - 119 + i * 30, y + 32, 9, 0, 7); x.fill(); x.restore(); } }
+    const m2 = eo(p(t, ps(5) + .6, ps(5) + .9));
+    if (m2) { const hh = msg(w - 24, y, 450, 'Конечно! 2 пиццы Маргарита, доставка завтра к 12:00. Подтверждаете?', true, m2); 
+      const bd = eb(p(t, ps(5) + .7, ps(5) + 1.0)); if (bd) { x.save(); x.translate(w - 60, y - 6); x.scale(bd, bd); x.fillStyle = C.ok; rr(-90, -22, 180, 44, 22); x.fill(); T('⚡ 0,8 сек', 0, 2, 26, { w: 800, fill: '#04120C' }); x.restore(); }
+      y += hh + 18; }
+    const m3 = eo(p(t, ps(5) + 1.5, ps(5) + 1.8));
+    if (m3) y += msg(24, y, 220, 'Да 👍', false, m3) + 18;
+    const m4 = eb(p(t, ps(5) + 2.0, ps(5) + 2.4));
+    if (m4) { x.save(); x.translate(w / 2, y + 60); x.scale(m4, m4); x.fillStyle = '#0B3B2A'; x.strokeStyle = C.ok; x.lineWidth = 3; rr(-230, -55, 460, 110, 30); x.fill(); x.stroke(); check(-170, 0, 1); T('Заказ №1047 принят', 30, 2, 34, { w: 800 }); x.restore(); }
+  });
+  x.restore();
+  // Карточка заказа улетает к менеджеру
+  if (fly > 0) {
+    const fx = CX + fly * 0, fy = 1080 + fly * 230;
+    x.save(); x.globalAlpha *= clamp(fly * 3); x.translate(fx, fy); x.scale(1 - fly * .15, 1 - fly * .15);
+    x.shadowColor = C.ok; x.shadowBlur = 40; x.fillStyle = '#0B3B2A'; rr(-300, -60, 600, 120, 30); x.fill(); x.shadowBlur = 0;
+    T('👨‍💼  Менеджер получил заказ', 0, 2, 36, { w: 800 }); x.restore();
+  }
+}
+// E. Анализ звонков
+function sE(t, a, b) {
+  if (t < a - .1 || t > b + .1) return;
+  const k = eb(p(t, a, a + .4));
+  x.save(); x.translate(CX, 420); x.scale(k, k);
+  x.fillStyle = C.ok; x.beginPath(); x.arc(0, 0, 80, 0, 7); x.fill(); T('📞', 0, 4, 70, { w: 400 }); x.restore();
+  for (let r = 0; r < 3; r++) { const q = ((t - a) * 1.2 + r / 3) % 1; x.strokeStyle = `rgba(52,211,153,${1 - q})`; x.lineWidth = 4; x.beginPath(); x.arc(CX, 420, 80 + q * 120, 0, 7); x.stroke(); }
+  // Волна речи
+  x.save(); x.strokeStyle = grad(SX, 0, SX + SW, 0); x.lineWidth = 6; x.lineCap = 'round';
+  for (let i = 0; i < 40; i++) { const hgt = (20 + 90 * Math.abs(Math.sin(i * .7 + t * 9) * Math.sin(i * .23 + t * 3))) * eo(p(t, a + .2, a + .6)); const X = SX + 20 + i * 17.5; x.beginPath(); x.moveTo(X, 720 - hgt); x.lineTo(X, 720 + hgt); x.stroke(); }
+  x.restore();
+  [['Вежливость', 0], ['По скрипту', 1], ['Продажа', 2]].forEach(([s, i]) => {
+    const q = eb(p(t, a + .45 + i * .3, a + .75 + i * .3)); if (!q) return;
+    x.save(); x.translate(CX, 930 + i * 115); x.scale(q, q); x.fillStyle = C.card; rr(-260, -45, 520, 90, 26); x.fill(); check(-200, 0, .9); T(s, 20, 2, 40, { w: 700 }); x.restore();
+  });
+}
+// F. Отчёт на телефон
+function sF(t, a, b) {
+  if (t < a - .1 || t > b + .1) return;
+  const n = eb(p(t, a, a + .45));
+  x.save(); x.translate(CX, 360 - (1 - clamp(n)) * 200); x.globalAlpha = clamp(n);
+  x.fillStyle = '#F8FAFCee'; rr(-350, -80, 700, 160, 36); x.fill();
+  logo(-280, 0, .45); T('Отчёт за сегодня · 21:00', -220, -24, 32, { align: 'left', w: 800, fill: '#0F172A' });
+  T('Заявки, продажи, выручка', -220, 24, 28, { align: 'left', w: 500, fill: '#334155' }); x.restore();
+  const bars = [.35, .5, .42, .63, .58, .78, .92];
+  bars.forEach((v, i) => {
+    const g = eo(p(t, a + .4 + i * .1, a + 1.0 + i * .1)); const hh = 420 * v * g, X = SX + 40 + i * 96;
+    x.fillStyle = grad(0, 1080, 0, 1080 - hh); rr(X, 1080 - hh, 64, hh, 14); x.fill();
+  });
+  const up = eb(p(t, a + 1.2, a + 1.6));
+  if (up) { x.save(); x.translate(CX + 200, 600); x.scale(up, up); T('↑', 0, 0, 120, { fill: C.ok, glow: C.ok }); x.restore(); }
+  T('пример отчёта', CX, 1140, 28, { w: 500, fill: C.dim, a: eo(p(t, a + .5, a + 1)) });
+}
+// G. Услуги
+function sG(t, a, b) {
+  if (t < a - .1 || t > b + .1) return;
+  T('Что мы делаем', CX, 300, 64, { a: eo(p(t, a, a + .3)) });
+  const tiles = [['💬', 'Чат-боты'], ['🧠', 'ИИ-агенты'], ['🌐', 'Сайты'], ['📱', 'Приложения'], ['📊', 'CRM и ERP'], ['🎙', 'Анализ звонков']];
+  tiles.forEach(([ic, s], i) => {
+    const d = i < 4 ? [0, .55, 1.6, 2.2][i] : 2.6 + (i - 4) * .2;
+    const q = eb(p(t, a + d, a + d + .35)); if (!q) return;
+    const col = i % 2, row = Math.floor(i / 2), X = CX + (col ? 185 : -185), Y = 520 + row * 270;
+    x.save(); x.translate(X, Y); x.scale(q, q); x.rotate((1 - clamp(q)) * (col ? .3 : -.3));
+    x.shadowColor = C.blue; x.shadowBlur = 30; x.fillStyle = C.card; rr(-170, -115, 340, 230, 36); x.fill(); x.shadowBlur = 0;
+    x.strokeStyle = grad(-170, -115, 170, 115); x.lineWidth = 3; rr(-170, -115, 340, 230, 36); x.stroke();
+    T(ic, 0, -35, 70, { w: 400 }); T(s, 0, 60, 38, { w: 800 }); x.restore();
+  });
+}
+// H. Логотип со вспышкой
+function sH(t, a, b) {
+  if (t < a - .1 || t > b + .1) return;
+  const k = eb(p(t, a, a + .5));
+  for (let i = 0; i < 24; i++) { const ang = i / 24 * Math.PI * 2 + t * .3, len = 260 + 500 * eo(p(t, a, a + .8)); x.save(); x.globalAlpha *= .25 * (1 - p(t, a + .4, b)); x.strokeStyle = i % 2 ? C.cyan : C.blue; x.lineWidth = 6; x.beginPath(); x.moveTo(CX + Math.cos(ang) * 200, 640 + Math.sin(ang) * 200); x.lineTo(CX + Math.cos(ang) * len, 640 + Math.sin(ang) * len); x.stroke(); x.restore(); }
+  logo(CX - 30, 640, 2.6 * k);
+  T('Nextin', CX, 920, 150, { w: 900, a: eo(p(t, a + .25, a + .6)), glow: C.blue });
+  T('всё под ключ', CX, 1060, 60, { w: 700, fill: C.cyan, a: eo(p(t, a + .5, a + .9)) });
+}
+// I. Цифры со счётчиком
+function sI(t, a, b) {
+  if (t < a - .1 || t > b + .1) return;
+  [[8, '+', 'лет опыта', 0], [30, '+', 'проектов', .9], [25, '+', 'клиентов', 1.6]].forEach(([n, suf, s, d], i) => {
+    const q = eb(p(t, a + d, a + d + .4)); if (!q) return; const Y = 400 + i * 300;
+    const v = Math.round(n * eo(p(t, a + d, a + d + .9)));
+    x.save(); x.translate(CX, Y); x.scale(clamp(q, 0, 1.15), clamp(q, 0, 1.15));
+    x.fillStyle = '#ffffff0f'; rr(-360, -125, 720, 250, 44); x.fill();
+    T(v + suf, -120, 0, 140, { w: 900, fill: grad(-300, 0, 60, 0) }); T(s, 70, 4, 50, { align: 'left', w: 700 });
+    x.restore();
+  });
+}
+// J. Призыв
+function sJ(t, a) {
+  const q = eo(p(t, a - .1, a + .35)); if (!q) return; x.save(); x.globalAlpha *= q;
+  logo(CX - 215, 300, .9 * eb(p(t, a, a + .5))); T('Nextin', CX + 50, 304, 92, { w: 900 });
+  T('Первая консультация', CX, 470, 66, { w: 800 });
+  T('БЕСПЛАТНО', CX, 585, 96, { w: 900, fill: grad(250, 0, 830, 0, C.cyan, '#E0F2FE'), glow: C.cyan, a: eo(p(t, a + .3, a + .6)) });
+  const pa = eb(p(t, a + .8, a + 1.2));
+  if (pa) { const pl = 1 + .04 * Math.sin(t * 7); x.save(); x.translate(CX, 760); x.scale(pa * pl, pa * pl); x.shadowColor = C.cyan; x.shadowBlur = 60; x.fillStyle = grad(-340, 0, 340, 0); rr(-340, -80, 680, 160, 80); x.fill(); x.shadowBlur = 0; T('Пишите в Direct →', 0, 4, 58, { w: 900 }); x.restore();
+    const sw = ((t - a) * .6) % 1; x.save(); x.beginPath(); x.roundRect(CX - 340 * pa, 680, 680 * pa, 160, 80); x.clip(); const gx = CX - 500 + sw * 1000; const lg = x.createLinearGradient(gx - 80, 0, gx + 80, 0); lg.addColorStop(0, '#ffffff00'); lg.addColorStop(.5, '#ffffff66'); lg.addColorStop(1, '#ffffff00'); x.fillStyle = lg; x.fillRect(0, 680, W, 160); x.restore(); }
+  const ca = eo(p(t, a + 1.4, a + 1.8));
+  x.save(); x.globalAlpha *= ca; x.fillStyle = '#ffffff0d'; rr(SX, 900, SW, 330, 40); x.fill(); x.restore();
+  T('📞  +998 77 777 16 68', CX, 975, 54, { w: 800, a: ca });
+  T('✈  @dosd_nextin', CX, 1065, 50, { w: 700, fill: C.tg, a: ca });
+  T('🌐  nextin.uz', CX, 1155, 50, { w: 700, fill: C.cyan, a: ca });
+  x.restore();
+}
+// Субтитры-караоке: текущее слово подсвечено
+function captions(t) {
+  const i = P.findIndex(s => t >= s[0] - .05 && t <= s[1] + .25); if (i < 0) return;
+  const [s0, s1, text] = P[i]; const words = text.split(' ');
+  const total = words.reduce((n, w) => n + w.length + 1, 0); let acc = 0, cur = words.length - 1;
+  for (let k = 0; k < words.length; k++) { acc += words[k].length + 1; if (t < s0 + (s1 - s0) * acc / total) { cur = k; break; } }
+  const lines = []; let line = [];
+  x.save(); x.font = `800 44px ${F}`;
+  for (let k = 0; k < words.length; k++) { const tt = [...line, words[k]].map(j => j).join(' '); if (x.measureText(tt).width > SW && line.length) { lines.push(line); line = []; } line.push(words[k]); }
+  lines.push(line);
+  let idx = 0; const Y0 = 1395 - (lines.length - 1) * 56;
+  lines.forEach((L, li) => {
+    const full = L.join(' '); let cx = CX - x.measureText(full).width / 2;
+    L.forEach(w => { const ww = x.measureText(w).width, isCur = idx === cur;
+      x.lineJoin = 'round'; x.lineWidth = 10; x.strokeStyle = '#000000d9'; x.textBaseline = 'middle';
+      x.strokeText(w, cx, Y0 + li * 56); x.fillStyle = isCur ? '#FDE047' : (idx < cur ? '#fff' : '#ffffffb3'); x.fillText(w, cx, Y0 + li * 56);
+      cx += ww + x.measureText(' ').width; idx++; });
+  });
+  x.restore();
+}
+function draw(t) {
+  background(t);
+  // Каждая сцена мягко гаснет/проявляется на стыке (±0.12 с), чтобы соседние не накладывались
+  const scene = (fn, a, b) => { const k = Math.min(clamp((t - a + .02) / .14), clamp((b + .02 - t) / .14)); if (k <= 0) return; x.save(); x.globalAlpha = k; fn(t, a, b); x.restore(); };
+  scene(sA, -1, ps(2)); scene(sB, ps(2), ps(3)); scene(sD, ps(3), ps(6)); scene(sE, ps(6), ps(7)); scene(sF, ps(7), ps(8));
+  scene(sG, ps(8), ps(9)); scene(sH, ps(9), ps(10)); scene(sJ, ps(10), 1e9);
+  captions(t);
+  // Камера: «удар» зума на каждой смене сцены + глитч-полосы
+  const cuts = [ps(2), ps(3), ps(6), ps(7), ps(8), ps(9), ps(10)];
+  let zoom = 1, gl = 0; cuts.forEach(c => { const d = t - c; if (d >= -.08 && d < .35) { zoom += .06 * (1 - p(d, 0, .35)); } if (Math.abs(d) < .12) gl = Math.max(gl, 1 - Math.abs(d) / .12); });
+  o.save(); o.fillStyle = C.bg1; o.fillRect(0, 0, W, H);
+  o.translate(CX, H / 2); o.scale(zoom, zoom); o.translate(-CX, -H / 2); o.drawImage(buf, 0, 0); o.restore();
+  if (gl > 0) {
+    for (let i = 0; i < 9; i++) { const y = Math.floor(rnd(i + Math.floor(t * 30)) * H), hgt = 30 + rnd(i * 3 + t) * 120, dx = (rnd(i + 7 + t) - .5) * 120 * gl; o.drawImage(buf, 0, y, W, hgt, dx, y, W, hgt); }
+    o.save(); o.globalCompositeOperation = 'lighter'; o.globalAlpha = .35 * gl; o.drawImage(buf, 14 * gl, 0); o.restore();
+    o.fillStyle = `rgba(255,255,255,${.12 * gl})`; o.fillRect(0, 0, W, H);
+  }
+  // Виньетка
+  const vg = o.createRadialGradient(CX, H / 2, 500, CX, H / 2, 1200); vg.addColorStop(0, '#00000000'); vg.addColorStop(1, '#00000088'); o.fillStyle = vg; o.fillRect(0, 0, W, H);
+}
+window.setup = d => { P = d.phrases.map(([a, b, s]) => [a + d.offset, b + d.offset, s]); DUR = d.phrases.at(-1)[1] + d.offset + d.tail; return DUR; };
+window.draw = draw;
+document.fonts.load(`800 40px Inter`).then(() => { window.ready = true; });
+</script></body></html>
