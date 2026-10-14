@@ -187,7 +187,7 @@ const SCN = {
     const [, l1, l2] = S.lines, cols = ['Новые', 'В работе', 'Оплачено'], colX = [300, 540, 780];
     cols.forEach((c, i) => pop(t, l1 - .2 + i * .15, colX[i], 640, () => { x.fillStyle = '#ffffff0c'; rr(-110, -210, 220, 640, 24); x.fill(); T(c, 0, -170, 30, { w: 800, fill: [C.cyan, C.gold, C.ok][i] }); }));
     for (let j = 0; j < 6; j++) { const t0 = l1 + .3 + j * .45; if (t < t0) continue; const mv = eio(p(t, t0 + 1.2, t0 + 2.2)), mv2 = eio(p(t, t0 + 2.6, t0 + 3.4)) * (j % 2 === 0);
-      const X = colX[0] + (colX[1] - colX[0]) * mv + (colX[2] - colX[1]) * mv2, slot = j % 4, Y = 520 + slot * 100;
+      const X = colX[0] + (colX[1] - colX[0]) * mv + (colX[2] - colX[1]) * mv2, Y = 480 + j * 88;
       pop(t, t0, X, Y, () => { card(0, 0, 190, 80, { r: 18, fill: '#132552' }); T('Заявка #' + (1041 + j), 0, -12, 22, { w: 700 }); T((150 + j * 37) + ' 000 сум', 0, 18, 20, { w: 500, fill: C.dim }); }, .25); }
     const n = eb(p(t, l2 + .2, l2 + .7));
     if (n) { x.save(); x.translate(CX, 1080 + (1 - clamp(n)) * 200); x.globalAlpha *= clamp(n); card(0, 0, 700, 230, { fill: '#F8FAFCee', stroke: false, r: 36 });
@@ -213,7 +213,7 @@ const SCN = {
       [['🛒', 'Заказы'], ['📅', 'Запись'], ['🎁', 'Акции'], ['💬', 'Чат']].forEach(([ic, s], i) => { const X = 24 + (i % 2) * ((w - 60) / 2 + 12), Y = 450 + Math.floor(i / 2) * 170; pop(t, l1 + .2 + i * .35, X + (w - 60) / 4, Y + 75, () => { x.fillStyle = '#132552'; rr(-(w - 60) / 4, -75, (w - 60) / 2, 150, 24); x.fill(); T(ic, 0, -20, 50, { w: 400 }); T(s, 0, 40, 28, { w: 700 }); }); });
     }); x.restore();
     ['🔔 Ваш заказ уже в пути', '🎁 Скидка 10% для вас', '📅 Напоминаем о записи завтра'].forEach((s, i) => { const t0 = l1 + 2.4 + i * .9, q = eb(p(t, t0, t0 + .4)); if (!q || t > t0 + 2.4) return;
-      x.save(); x.translate(CX, 430); x.globalAlpha *= clamp(q) * (1 - p(t, t0 + 2, t0 + 2.4)); x.translate(0, (1 - clamp(q)) * -120); card(0, 0, 640, 96, { fill: '#F8FAFCee', stroke: false, r: 28 }); T(s, 0, 2, 34, { w: 700, fill: '#0F172A' }); x.restore(); });
+      x.save(); x.translate(CX, 560); x.globalAlpha *= clamp(q) * (1 - p(t, t0 + 2, t0 + 2.4)); x.translate(0, (1 - clamp(q)) * -120); card(0, 0, 640, 96, { fill: '#F8FAFCee', stroke: false, r: 28 }); T(s, 0, 2, 34, { w: 700, fill: '#0F172A' }); x.restore(); });
   },
   ai(t, S) {
     const up = chapter(t, S, 6, 'ИИ под\nвашу задачу', '🧠'); if (up < .3) return;
@@ -243,11 +243,11 @@ const SCN = {
     kinetic([['Как'], ['мы'], ['работаем?', C.cyan]], CX, 320, 72, L[0], .2, t);
     const steps = ['Изучаем бизнес', 'Проектируем', 'Показываем версии', 'Запускаем', 'Обучаем команду', 'Поддерживаем'];
     const times = [L[1] + .3, L[1] + 1.8, L[1] + 3.6, L[2] + .1, L[2] + 1.1, L[2] + 2.4];
-    x.save(); x.strokeStyle = '#ffffff1a'; x.lineWidth = 8; x.beginPath(); x.moveTo(250, 450); x.lineTo(250, 1200); x.stroke();
+    x.save(); x.strokeStyle = '#ffffff1a'; x.lineWidth = 8; x.beginPath(); x.moveTo(250, 440); x.lineTo(250, 1165); x.stroke();
     const prog = steps.reduce((a, s, i) => t >= times[i] ? i : a, -1);
-    if (prog >= 0) { const q = eo(p(t, times[prog], times[prog] + .5)); x.strokeStyle = grad(0, 450, 0, 1200); x.beginPath(); x.moveTo(250, 450); x.lineTo(250, 450 + Math.min(5, prog + q) * 150); x.stroke(); }
+    if (prog >= 0) { const q = eo(p(t, times[prog], times[prog] + .5)); x.strokeStyle = grad(0, 450, 0, 1200); x.beginPath(); x.moveTo(250, 440); x.lineTo(250, 440 + Math.min(5, prog + q) * 145); x.stroke(); }
     x.restore();
-    steps.forEach((s, i) => { const Y = 450 + i * 150, on = t >= times[i]; pop(t, L[0] + .3 + i * .1, 250, Y, () => { x.fillStyle = on ? C.cyan : '#132552'; x.beginPath(); x.arc(0, 0, 36, 0, 7); x.fill(); T(String(i + 1), 0, 3, 34, { w: 900, fill: on ? '#04070F' : C.dim }); }, .3);
+    steps.forEach((s, i) => { const Y = 440 + i * 145, on = t >= times[i]; pop(t, L[0] + .3 + i * .1, 250, Y, () => { x.fillStyle = on ? C.cyan : '#132552'; x.beginPath(); x.arc(0, 0, 36, 0, 7); x.fill(); T(String(i + 1), 0, 3, 34, { w: 900, fill: on ? '#04070F' : C.dim }); }, .3);
       T(s, 320, Y + 2, 46, { align: 'left', w: on ? 800 : 600, fill: on ? C.txt : '#ffffff55', a: eo(p(t, L[0] + .3 + i * .1, L[0] + .6 + i * .1)) }); });
   },
   why(t, S) {
