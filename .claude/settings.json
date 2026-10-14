@@ -5,30 +5,9 @@
         "source": "github",
         "repo": "anthropics/skills"
       }
-    },
-    "ui-ux-pro-max-skill": {
-      "source": {
-        "source": "github",
-        "repo": "nextlevelbuilder/ui-ux-pro-max-skill"
-      }
-    },
-    "marketingskills": {
-      "source": {
-        "source": "github",
-        "repo": "coreyhaines31/marketingskills"
-      }
-    },
-    "last30days-skill": {
-      "source": {
-        "source": "github",
-        "repo": "mvanhorn/last30days-skill"
-      }
     }
   },
   "enabledPlugins": {
-    "document-skills@anthropic-agent-skills": true,
-    "ui-ux-pro-max@ui-ux-pro-max-skill": true,
-    "marketing-skills@marketingskills": true,
-    "last30days@last30days-skill": true
+    "document-skills@anthropic-agent-skills": true
   }
 }

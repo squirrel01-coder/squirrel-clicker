@@ -18,18 +18,34 @@ skill() {
   fi
 }
 
+# skillpack <git-url> <папка-внутри-репо> — ставит все скиллы из этой папки (каждая подпапка с SKILL.md)
+skillpack() {
+  local url=$1 sub=$2 tmp d
+  tmp=$(mktemp -d)
+  if git clone -q --depth 1 "$url" "$tmp"; then
+    for d in "$tmp/$sub"/*/; do
+      [ -f "$d/SKILL.md" ] || continue
+      rm -rf ~/.claude/skills/"$(basename "$d")"
+      cp -rL "$d" ~/.claude/skills/"$(basename "$d")"
+    done
+  else
+    echo "skillpack $url: clone failed"
+  fi
+  rm -rf "$tmp"
+}
+
 # plugin <плагин@маркетплейс> <github-repo-маркетплейса>
 PLUGINS=()
 plugin() { PLUGINS+=("$1|$2"); }
 
 # ---------- СПИСОК СКИЛЛОВ ----------
 skill humanizer https://github.com/blader/humanizer.git
+skillpack https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git .claude/skills
+skillpack https://github.com/coreyhaines31/marketingskills.git skills
+skillpack https://github.com/mvanhorn/last30days-skill.git skills
 
 # ---------- СПИСОК ПЛАГИНОВ ----------
 plugin document-skills@anthropic-agent-skills anthropics/skills
-plugin ui-ux-pro-max@ui-ux-pro-max-skill nextlevelbuilder/ui-ux-pro-max-skill
-plugin marketing-skills@marketingskills coreyhaines31/marketingskills
-plugin last30days@last30days-skill mvanhorn/last30days-skill
 
 # Прописываем плагины в ~/.claude/settings.json (существующие настройки сохраняются)
 printf '%s\n' "${PLUGINS[@]}" | python3 -c '
