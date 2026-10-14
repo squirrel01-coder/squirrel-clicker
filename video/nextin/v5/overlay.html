@@ -63,7 +63,7 @@ function bubble(t, t0, s, mine, Y, op = {}) {
 }
 function typing(t, t0, t1, Y) { if (t < t0 || t > t1) return; x.save(); x.fillStyle = 'rgba(255,255,255,.95)'; rr(SX - 20, Y, 140, 70, 35); x.fill();
   for (let i = 0; i < 3; i++) { x.globalAlpha = .35 + .65 * Math.abs(Math.sin(t * 7 + i)); x.fillStyle = '#64748B'; x.beginPath(); x.arc(SX + 20 + i * 30, Y + 35, 10, 0, 7); x.fill(); } x.restore(); }
-function faceBoxes(t, label) {
+function motionBoxes(t, label) {
   const f = FACES.boxes?.[Math.round(t * (FACES.fps || 30))]; if (!f) return;
   f.forEach(([bx, by, bw, bh], i) => { x.save(); x.strokeStyle = C.ok; x.lineWidth = 5; x.shadowColor = C.ok; x.shadowBlur = 20; const c = bw * .25;
     [[bx, by, 1, 1], [bx + bw, by, -1, 1], [bx, by + bh, 1, -1], [bx + bw, by + bh, -1, -1]].forEach(([X, Y, sx, sy]) => { x.beginPath(); x.moveTo(X, Y + sy * c); x.lineTo(X, Y); x.lineTo(X + sx * c, Y); x.stroke(); });
@@ -86,19 +86,19 @@ const S = [
   (t, a) => {
     pop(t, a, CX, 520, () => { glass(0, 0, 640, 260, { r: 48 }); logo(-200, -10, 1.1); T('Nextin', 60, -6, 100, { w: 900, fill: C.ink }); }, .5);
     pop(t, a + 1.0, CX, 760, () => { x.fillStyle = grad(-330, 0, 330, 0, C.blue2, C.violet, C.pink); x.shadowColor = C.violet; x.shadowBlur = 40; rr(-330, -66, 660, 132, 66); x.fill(); x.shadowBlur = 0; T('📹  Умное видеонаблюдение', 0, 3, 44, { w: 900 }); });
-    [['💬', 'Чат с камерами'], ['🧠', 'Искусственный интеллект'], ['🙂', 'Распознавание лиц']].forEach(([ic, s], i) => pop(t, a + 3.0 + i * .5, CX, 930 + i * 100, () => { glass(0, 0, 560, 84, { r: 42 }); T(ic + '  ' + s, 0, 2, 36, { w: 800, fill: C.ink }); }));
+    [['💬', 'Чат с камерами'], ['🧠', 'Искусственный интеллект'], ['🟢', 'Детектор движения']].forEach(([ic, s], i) => pop(t, a + 3.0 + i * .5, CX, 930 + i * 100, () => { glass(0, 0, 560, 84, { r: 42 }); T(ic + '  ' + s, 0, 2, 36, { w: 800, fill: C.ink }); }));
   },
   // 3 Кто подходил к двери: рамки лиц + галерея
   (t, a) => {
-    hud(t, 'CAM 01 · Вход'); faceBoxes(t, '🙂 Лицо распознано');
+    hud(t, 'CAM 01 · Вход'); motionBoxes(t, '🟢 Движение');
     bubble(t, a + .2, 'Кто сегодня подходил к двери?', true, 360, { type: .8 });
     typing(t, a + 2.0, a + 2.8, 500);
-    bubble(t, a + 2.8, 'Нашёл 2 человека. Вот их фото:', false, 500);
-    [[0, '09:14'], [1, '13:40']].forEach(([k, tm], i) => pop(t, a + 3.4 + i * .4, CX - 150 + i * 300, 760, () => { glass(0, 0, 260, 320, { r: 28 }); if (IMG[k]) { x.save(); rr(-115, -145, 230, 230, 20); x.clip(); x.drawImage(IMG[k], -115, -145, 230, 230); x.restore(); } T('Сегодня, ' + tm, 0, 120, 28, { w: 800, fill: C.ink }); }, .35, (i ? .3 : -.3)));
+    bubble(t, a + 2.8, 'Нашёл 2 момента. Вот скриншоты:', false, 500);
+    [[0, '09:14'], [1, '13:40']].forEach(([k, tm], i) => pop(t, a + 3.4 + i * .4, CX - 150 + i * 300, 850, () => { glass(0, 0, 260, 400, { r: 28 }); if (IMG[k]) { x.save(); rr(-115, -185, 230, 320, 20); x.clip(); x.drawImage(IMG[k], 0, 64, 360, 502, -115, -185, 230, 320); x.restore(); } T('Сегодня, ' + tm, 0, 168, 28, { w: 800, fill: C.ink }); }, .35, (i ? .3 : -.3)));
   },
   // 4 Камера вырезает момент
   (t, a) => {
-    hud(t, 'CAM 01 · Вход'); faceBoxes(t, '🙂 Посетитель');
+    hud(t, 'CAM 01 · Вход'); motionBoxes(t, '🟢 Движение');
     bubble(t, a + .1, 'Покажи, как он заходил', true, 360, { type: .7 });
     const k = eo(p(t, a + 1.2, a + 1.6));
     if (k) { x.save(); x.globalAlpha *= k; glass(CX, 900, 720, 200, { r: 32 }); x.fillStyle = '#E2E8F0'; rr(SX + 30, 880, 660, 26, 13); x.fill();
@@ -127,8 +127,9 @@ const S = [
     hud(t, 'CAM · Магазин');
     bubble(t, a + .1, 'Во сколько сегодня открыли?', true, 360, { type: .6 });
     typing(t, a + 1.0, a + 1.6, 500);
-    bubble(t, a + 1.6, 'В 08:57. Открыл Азиз 🔑', false, 500);
-    pop(t, a + 2.4, CX, 1060, () => { x.fillStyle = C.blue2 + 'ee'; rr(-300, -56, 600, 112, 56); x.fill(); T('🏪  Всё под контролем', 0, 3, 42, { w: 900 }); });
+    bubble(t, a + 1.6, 'Сегодня в 08:57. Вот скриншот 👇', false, 500);
+    pop(t, a + 2.0, CX - 150, 820, () => { glass(0, 0, 240, 360, { r: 26 }); if (IMG[2]) { x.save(); rr(-105, -165, 210, 290, 18); x.clip(); x.drawImage(IMG[2], 0, 60, 360, 497, -105, -165, 210, 290); x.restore(); } T('08:57', 0, 152, 28, { w: 800, fill: C.ink }); }, .35, -.3);
+    pop(t, a + 2.6, CX + 160, 1060, () => { x.fillStyle = C.blue2 + 'ee'; rr(-250, -56, 500, 112, 56); x.fill(); T('🏪  Под контролем', 0, 3, 42, { w: 900 }); });
   },
   // 8 CTA
   (t, a) => {

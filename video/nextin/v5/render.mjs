@@ -8,8 +8,8 @@ const require = createRequire(import.meta.url);
 let chromium; try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require(execSync('npm root -g').toString().trim() + '/playwright')); }
 const dir = path.dirname(fileURLToPath(import.meta.url)), FPS = 30;
 const data = JSON.parse(readFileSync(path.join(dir, 'timeline.json'), 'utf8'));
-data.faces = JSON.parse(readFileSync(path.join(dir, 'faces.json'), 'utf8'));
-data.faceImgs = ['face_0.png', 'face_1.png'].map(f => 'data:image/png;base64,' + readFileSync(path.join(dir, f)).toString('base64'));
+data.faces = JSON.parse(readFileSync(path.join(dir, 'motion.json'), 'utf8'));
+data.faceImgs = ['shot_0.png', 'shot_1.png', 'shot_2.png'].map(f => 'data:image/png;base64,' + readFileSync(path.join(dir, f)).toString('base64'));
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1080, height: 1920 } });
 await page.goto('file://' + path.join(dir, 'overlay.html'));
