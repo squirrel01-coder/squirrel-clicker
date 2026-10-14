@@ -26,6 +26,8 @@ python3 $S --list ru-RU                                            # списо�
 
 - Русский: `ru-RU-DmitryNeural` (мужской, уверенный — для рекламы), `ru-RU-SvetlanaNeural`,
   `ru-RU-DariyaNeural` (женские). Полный список — `--list ru-RU`.
+- Русский, новые живые голоса с эмоциями: `ru-RU-Lev:MAI-Voice-2.1` (м), `ru-RU-Masha:MAI-Voice-2.1` (ж).
+  Стиль через `--style`: `excited`, `friendlycheerful`, `encouraging`, `serious`, `curious`, `caringempathy` и др.
 - Узбекский: `uz-UZ-SardorNeural` (м), `uz-UZ-MadinaNeural` (ж).
 - Английский: `en-US-AndrewMultilingualNeural`, `en-US-AvaMultilingualNeural` и др.
 
@@ -43,4 +45,4 @@ python3 $S --list ru-RU                                            # списо�
   заголовок `Ocp-Apim-Subscription-Key`, без префикса, значение — КЛЮЧ 1 из Azure. Секрет
   подхватывается только новыми сессиями.
 - `HTTP 429` — превышен лимит запросов F0 (20 в минуту): скрипт сам делает паузу и повторяет.
-- Лимит 500 000 символов в месяц; один ролик ≈ 500 символов.
+- Лимит 500 000 символов в месяц; один ролик ≈ 500 символов. Ресурс на тарифе F0 не может списать деньги: при исчерпании лимита он просто перестаёт отвечать до следующего месяца.
