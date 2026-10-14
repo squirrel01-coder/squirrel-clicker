@@ -43,6 +43,7 @@ skill humanizer https://github.com/blader/humanizer.git
 skillpack https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git .claude/skills
 skillpack https://github.com/coreyhaines31/marketingskills.git skills
 skillpack https://github.com/mvanhorn/last30days-skill.git skills
+skillpack https://github.com/squirrel01-coder/squirrel-clicker.git skills   # свои скиллы (azure-tts)
 
 # ---------- СПИСОК ПЛАГИНОВ ----------
 plugin document-skills@anthropic-agent-skills anthropics/skills
