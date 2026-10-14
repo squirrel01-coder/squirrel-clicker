@@ -27,6 +27,9 @@ skill humanizer https://github.com/blader/humanizer.git
 
 # ---------- СПИСОК ПЛАГИНОВ ----------
 plugin document-skills@anthropic-agent-skills anthropics/skills
+plugin ui-ux-pro-max@ui-ux-pro-max-skill nextlevelbuilder/ui-ux-pro-max-skill
+plugin marketing-skills@marketingskills coreyhaines31/marketingskills
+plugin last30days@last30days-skill mvanhorn/last30days-skill
 
 # Прописываем плагины в ~/.claude/settings.json (существующие настройки сохраняются)
 printf '%s\n' "${PLUGINS[@]}" | python3 -c '
