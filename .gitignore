@@ -1,2 +1,6 @@
 video/out/silent.mp4
 video/out/music.wav
+video/science/vo/*.wav
+video/science/mix.wav
+video/science/prev_*.png
+video/science/render.log

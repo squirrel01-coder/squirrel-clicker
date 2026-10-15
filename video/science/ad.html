@@ -1,0 +1,216 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#F4F7FD}canvas{display:block}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// Видеопрезентация «Платформа управления научными статьями», 16:9. draw(t) рисует кадр; тайминги — timeline.json.
+const W = 1920, H = 1080, CX = 960;
+const out = document.getElementById('c'), o = out.getContext('2d');
+const buf = document.createElement('canvas'); buf.width = W; buf.height = H; const x = buf.getContext('2d');
+const C = { bg1: '#F4F7FD', bg2: '#E6EEFB', blue: '#0084FF', blue2: '#0059FF', navy: '#0B1F4D', cyan: '#38BDF8', ok: '#10B981', bad: '#EF4444', warn: '#F59E0B', gold: '#F59E0B', txt: '#0B1F4D', dim: '#64748B', card: '#FFFFFF', violet: '#7C3AED', tg: '#229ED9' };
+const F = 'Inter, sans-serif';
+let PH = [], SC = {}, ORDER = [], DUR = 170;
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const p = (t, a, b) => clamp((t - a) / (b - a));
+const eo = v => 1 - Math.pow(1 - v, 3);
+const eio = v => v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2;
+const eb = v => { const s = 1.7; return v <= 0 ? 0 : 1 + (s + 1) * Math.pow(v - 1, 3) + s * Math.pow(v - 1, 2); };
+const rnd = s => { const v = Math.sin(s * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+
+function grad(x0, y0, x1, y1, a = C.blue2, b = C.cyan) { const g = x.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, a); g.addColorStop(1, b); return g; }
+function rr(X, Y, w, h, r) { x.beginPath(); x.roundRect(X, Y, w, h, r); }
+function T(s, X, Y, size, op = {}) {
+  x.save(); x.font = `${op.w || 800} ${size}px ${F}`; x.textAlign = op.align || 'center'; x.textBaseline = 'middle';
+  x.globalAlpha *= op.a ?? 1; x.fillStyle = op.fill || C.txt; if (op.glow) { x.shadowColor = op.glow; x.shadowBlur = 40; }
+  String(s).split('\n').forEach((l, i) => x.fillText(l, X, Y + i * size * (op.lh || 1.15))); x.restore();
+}
+function wrap(s, size, maxW, w = 700) {
+  x.save(); x.font = `${w} ${size}px ${F}`; const L = []; let line = '';
+  for (const word of s.split(' ')) { const t = line ? line + ' ' + word : word; if (x.measureText(t).width > maxW && line) { L.push(line); line = word; } else line = t; }
+  if (line) L.push(line); x.restore(); return L;
+}
+function pop(t, t0, X, Y, fn, d = .35) { const k = eb(p(t, t0, t0 + d)); if (k <= 0) return; x.save(); x.translate(X, Y); x.scale(k, k); x.globalAlpha *= clamp(k * 1.5); fn(); x.restore(); }
+function kinetic(words, X, Y, size, t0, step, t, op = {}) {
+  x.save(); x.font = `${op.w || 900} ${size}px ${F}`;
+  const sp = size * .4, ws = words.map(w => x.measureText(w[0]).width), total = ws.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+  let cx = X - total / 2; x.restore();
+  words.forEach(([w, col], i) => { const a = eb(p(t, t0 + i * step, t0 + i * step + .35));
+    if (a > 0) { x.save(); x.translate(cx + ws[i] / 2, Y + (1 - clamp(a)) * 40); x.scale(a, a); T(w, 0, 0, size, { w: op.w || 900, fill: col || C.txt, glow: op.glow }); x.restore(); }
+    cx += ws[i] + sp; });
+}
+function card(X, Y, w, h, op = {}) {
+  x.save(); if (op.glow) { x.shadowColor = op.glow; x.shadowBlur = 40; }
+  x.fillStyle = op.fill || C.card; rr(X - w / 2, Y - h / 2, w, h, op.r || 34); x.fill(); x.shadowBlur = 0;
+  if (op.stroke !== false) { x.strokeStyle = op.stroke || grad(X - w / 2, Y, X + w / 2, Y); x.lineWidth = 3; rr(X - w / 2, Y - h / 2, w, h, op.r || 34); x.stroke(); }
+  x.restore();
+}
+function logo(X, Y, s, a = 1) {
+  x.save(); x.translate(X, Y); x.scale(s, s); x.globalAlpha *= a;
+  x.fillStyle = grad(-60, -60, 60, 60, '#1A6BFF', C.blue);
+  x.beginPath(); x.moveTo(-58, 0); x.lineTo(-14, -44); x.lineTo(4, -26); x.lineTo(-22, 0); x.lineTo(4, 26); x.lineTo(-14, 44); x.closePath(); x.fill();
+  x.fillStyle = grad(-20, -60, 60, 60, C.blue, C.cyan);
+  x.beginPath(); x.moveTo(-6, 0); x.lineTo(32, -38); x.lineTo(70, 0); x.lineTo(32, 38); x.closePath(); x.fill(); x.restore();
+}
+function check(X, Y, s = 1, col = C.ok, bad = false) {
+  x.save(); x.translate(X, Y); x.scale(s, s); x.fillStyle = bad ? C.bad : col; x.beginPath(); x.arc(0, 0, 26, 0, 7); x.fill();
+  x.strokeStyle = '#04120C'; x.lineWidth = 7; x.lineCap = 'round'; x.beginPath();
+  if (bad) { x.moveTo(-9, -9); x.lineTo(9, 9); x.moveTo(9, -9); x.lineTo(-9, 9); } else { x.moveTo(-11, 1); x.lineTo(-3, 9); x.lineTo(12, -8); }
+  x.stroke(); x.restore();
+}
+function phone(X, Y, w, h, cb, tilt = 0) {
+  x.save(); x.translate(X, Y); x.rotate(tilt);
+  x.shadowColor = '#0B205044'; x.shadowBlur = 60; x.fillStyle = '#0B1020'; rr(-w / 2, -h / 2, w, h, 64); x.fill(); x.shadowBlur = 0;
+  x.strokeStyle = '#2A3A66'; x.lineWidth = 6; rr(-w / 2, -h / 2, w, h, 64); x.stroke();
+  x.save(); rr(-w / 2 + 16, -h / 2 + 16, w - 32, h - 32, 50); x.clip(); x.fillStyle = '#0F172A'; x.fillRect(-w / 2, -h / 2, w, h);
+  x.translate(-w / 2 + 16, -h / 2 + 16); cb(w - 32, h - 32); x.restore();
+  x.fillStyle = '#000'; rr(-60, -h / 2 + 28, 120, 30, 15); x.fill(); x.restore();
+}
+function msg(X, Y, w, s, mine, a, col, size = 32) {
+  const L = wrap(s, size, w - 48, 500), h = 28 + L.length * size * 1.3; if (a <= 0) return h;
+  x.save(); x.globalAlpha *= a; x.fillStyle = col || (mine ? C.blue2 : '#1F2A44'); rr(mine ? X - w : X, Y, w, h, 24); x.fill();
+  L.forEach((l, i) => T(l, (mine ? X - w : X) + 22, Y + 14 + size * .65 + i * size * 1.3, size, { align: 'left', w: 500 })); x.restore(); return h;
+}
+function chip(s, X, Y, col, size = 34) {
+  x.save(); x.font = `700 ${size}px ${F}`; const w = x.measureText(s).width + 48; x.restore();
+  x.fillStyle = col; rr(X - w / 2, Y - size * .85, w, size * 1.7, size * .85); x.fill(); T(s, X, Y + 2, size, { w: 700 }); return w;
+}
+
+
+function shadowCard(X, Y, w, h, r = 28, fill = '#fff') { x.save(); x.shadowColor = '#0B1F4D22'; x.shadowBlur = 40; x.shadowOffsetY = 14; x.fillStyle = fill; rr(X - w / 2, Y - h / 2, w, h, r); x.fill(); x.restore(); }
+function background(t) {
+  const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, C.bg1); g.addColorStop(1, C.bg2); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  [[300 + 80 * Math.sin(t * .2), 200, '#38BDF8', 600], [1650 + 60 * Math.cos(t * .17), 900, '#7C3AED', 600]].forEach(([X, Y, col, R]) => { const r = x.createRadialGradient(X, Y, 0, X, Y, R); r.addColorStop(0, col + '22'); r.addColorStop(1, col + '00'); x.fillStyle = r; x.fillRect(0, 0, W, H); });
+  x.save(); x.fillStyle = '#0B1F4D10'; for (let i = 0; i < 40; i++) for (let j = 0; j < 23; j++) { x.beginPath(); x.arc(24 + i * 48, 24 + j * 48, 1.6, 0, 7); x.fill(); } x.restore();
+}
+function icon(s, X, Y, size) { T(s, X, Y, size, { w: 400 }); }
+function docIcon(X, Y, s = 1, col = C.blue2) { x.save(); x.translate(X, Y); x.scale(s, s); x.fillStyle = '#fff'; x.strokeStyle = col; x.lineWidth = 4; rr(-40, -52, 80, 104, 10); x.fill(); x.stroke(); x.fillStyle = col + '55'; for (let i = 0; i < 4; i++) { rr(-26, -30 + i * 18, i === 3 ? 30 : 52, 7, 3); x.fill(); } x.restore(); }
+
+const SCN = {
+  hook(t, S) {
+    const [l0, l1, l2, l3] = S.lines, calm = eio(p(t, l3 - .3, l3 + .6));
+    if (calm < 1) { x.save(); x.globalAlpha *= 1 - calm;
+      // гора бумаг растёт
+      const n = Math.floor(28 * eo(p(t, .3, l2 + 4)));
+      for (let i = 0; i < n; i++) { x.save(); x.translate(420 + Math.sin(i * 2.3) * 60, 860 - i * 20); x.rotate(Math.sin(i * 1.7) * .12); x.fillStyle = i % 2 ? '#fff' : '#F1F5F9'; x.strokeStyle = '#CBD5E1'; x.lineWidth = 2; rr(-150, -14, 300, 28, 4); x.fill(); x.stroke(); x.restore(); }
+      // часы
+      x.save(); x.translate(960, 420); shadowCard(0, 0, 300, 300, 150); x.strokeStyle = C.navy; x.lineWidth = 8; x.lineCap = 'round';
+      x.beginPath(); x.moveTo(0, 0); x.lineTo(Math.cos(t * 9) * 95, Math.sin(t * 9) * 95); x.stroke(); x.beginPath(); x.moveTo(0, 0); x.lineTo(Math.cos(t * 1.2) * 60, Math.sin(t * 1.2) * 60); x.stroke(); x.restore();
+      // календарь 15 → 20 → 30
+      const d = t < l1 + .6 ? 7 : t < l1 + 1.4 ? 15 : t < l1 + 2.2 ? 20 : 30;
+      x.save(); x.translate(1480, 420); shadowCard(0, 0, 320, 340, 26); x.fillStyle = C.bad; rr(-160, -170, 320, 80, [26, 26, 0, 0]); x.fill(); T('ДНЕЙ НА СТАТЬЮ', 0, -128, 26, { w: 800, fill: '#fff' }); T(String(d), 0, 30, 150, { w: 900, fill: C.navy }); x.restore();
+      pop(t, l2 + .4, 960, 760, () => { x.fillStyle = C.bad; x.shadowColor = C.bad; x.shadowBlur = 30; rr(-320, -54, 640, 108, 54); x.fill(); x.shadowBlur = 0; T('⚠  ОШИБКА / ЗАДЕРЖКА', 0, 3, 46, { w: 900, fill: '#fff' }); });
+      kinetic([['Сколько'], ['времени'], ['на'], ['одну'], ['статью?', C.blue2]], 960, 150, 64, l0 + .2, .25, t);
+      x.restore(); }
+    if (calm > 0) { x.save(); x.globalAlpha *= calm;
+      x.save(); x.translate(760, 520); x.fillStyle = '#1E293B'; rr(-420, -260, 840, 500, 30); x.fill(); x.fillStyle = '#fff'; rr(-400, -240, 800, 460, 16); x.fill(); x.fillStyle = '#CBD5E1'; rr(-480, 240, 960, 34, 14); x.fill();
+      x.fillStyle = C.blue2; rr(-400, -240, 800, 60, [16, 16, 0, 0]); x.fill(); T('Статья №248 · статус', -370, -210, 26, { align: 'left', w: 800, fill: '#fff' });
+      ['Загружена', 'Проверена', 'Рецензия', 'Утверждена'].forEach((s, i) => { const on = t > l3 + .8 + i * .5; x.fillStyle = on ? C.ok : '#E2E8F0'; x.beginPath(); x.arc(-300 + i * 200, -40, 34, 0, 7); x.fill(); if (on) check(-300 + i * 200, -40, .9); T(s, -300 + i * 200, 30, 24, { w: 700, fill: C.navy }); });
+      x.restore();
+      pop(t, l3 + 1.6, 1500, 400, () => { T('7 дней', 0, 0, 130, { w: 900, fill: grad(-250, 0, 250, 0, C.blue2, C.cyan) }); T('вместо месяца', 0, 90, 40, { w: 700, fill: C.dim }); });
+      pop(t, l3 + 3.4, 1500, 700, () => { shadowCard(0, 0, 420, 130, 65, C.blue2); T('📄 Отчёт в 1 клик', 0, 3, 44, { w: 900, fill: '#fff' }); });
+      x.restore(); }
+  },
+  solution(t, S) {
+    const [l0, l1, l2] = S.lines, k = eb(p(t, l0, l0 + .6)), up = eio(p(t, l1 - .4, l1 + .3));
+    x.save(); x.globalAlpha *= 1 - up; x.translate(960, 420 - up * 250); x.scale(k * (1 - up * .35), k * (1 - up * .35));
+    shadowCard(0, 0, 240, 240, 60, C.blue2); x.fillStyle = '#fff'; docIcon(-20, 0, 1.3, '#fff'); x.restore();
+    pop(t, l0 + .9, 960, 640 - up * 380, () => { shadowCard(0, 0, 1180, 110, 55); T('Единая платформа управления научными статьями', 0, 3, 46, { w: 900, fill: C.navy }); });
+    if (up > 0) { const steps = [['👩‍🏫', 'Преподаватель', 'загружает файл'], ['🤖', 'Система', 'сама проверяет'], ['✍️', 'Редактор', 'правки в браузере'], ['🎓', 'Ректор', 'видит статус']];
+      steps.forEach(([ic, n, d], i) => pop(t, l1 + .3 + i * .7, 330 + i * 420, 560, () => { shadowCard(0, 0, 340, 300, 30); icon(ic, 0, -70, 80); T(n, 0, 30, 36, { w: 900, fill: C.navy }); T(d, 0, 80, 26, { w: 600, fill: C.dim }); }));
+      for (let i = 0; i < 3; i++) { const q = p(t, l1 + .8 + i * .7, l1 + 1.2 + i * .7); if (q) { x.fillStyle = C.blue; rr(500 + i * 420, 556, 80 * q, 8, 4); x.fill(); } }
+      const dq = ((t - l1) * .35) % 1; if (t > l1 + 3) docIcon(330 + dq * 1260, 765, .55);
+      const tags = ['Без бумаг', 'Без потерянных правок', 'Без долгих согласований'];
+      tags.forEach((s, i) => pop(t, l2 + .3 + i * .6, 420 + i * 540, 860, () => { x.fillStyle = C.ok; rr(-230, -40, 460, 80, 40); x.fill(); T('✓ ' + s, 0, 3, 32, { w: 800, fill: '#fff' }); })); }
+  },
+  hemis(t, S) {
+    const [l0, l1] = S.lines;
+    kinetic([['Почему'], ['выбирают'], ['эту'], ['платформу?', C.blue2]], 960, 140, 58, l0, .2, t);
+    pop(t, l1 - .2, 540, 560, () => { shadowCard(0, 0, 640, 520, 36); T('Вход в систему', 0, -180, 40, { w: 900, fill: C.navy });
+      x.fillStyle = '#F1F5F9'; rr(-250, -110, 500, 70, 16); x.fill(); T('Новый пароль не нужен', 0, -75, 26, { w: 600, fill: '#94A3B8' });
+      x.fillStyle = C.blue2; rr(-250, 0, 500, 90, 45); x.fill(); T('🔒  Войти через HEMIS', 0, 47, 38, { w: 900, fill: '#fff' });
+      T('привычный аккаунт сотрудника', 0, 160, 28, { w: 600, fill: C.dim }); });
+    const deps = ['Кафедра физики', 'Кафедра химии', 'Кафедра экономики', 'Кафедра IT', 'Кафедра медицины'];
+    pop(t, l1 + 3.5, 1380, 560, () => { shadowCard(0, 0, 640, 560, 36); T('🔄 Обновляется автоматически', 0, -230, 32, { w: 800, fill: C.ok });
+      deps.forEach((d, i) => { const q = eo(p(t, l1 + 4 + i * .35, l1 + 4.4 + i * .35)); x.save(); x.globalAlpha *= q; x.fillStyle = '#F1F5F9'; rr(-270, -160 + i * 80, 540, 64, 14); x.fill(); T(d, -240, -127 + i * 80, 28, { align: 'left', w: 700, fill: C.navy }); check(230, -128 + i * 80, .7); x.restore(); }); });
+  },
+  scopus(t, S) {
+    const [l0, l1] = S.lines;
+    pop(t, l0, 520, 540, () => { shadowCard(0, 0, 560, 660, 30); for (let i = 0; i < 14; i++) { x.fillStyle = '#E2E8F0'; rr(-220, -260 + i * 36, i % 5 === 4 ? 260 : 440, 14, 7); x.fill(); }
+      const sy = -280 + ((t - l0) * 260) % 560; x.fillStyle = C.cyan + '55'; x.fillRect(-270, sy, 540, 40); x.fillStyle = C.cyan; x.fillRect(-270, sy + 38, 540, 4); T('🤖 ИИ анализирует текст', 0, 300, 28, { w: 800, fill: C.blue2 }); });
+    pop(t, l0 + 4, 1360, 150, () => T('ТОП-10 журналов Scopus', 0, 0, 52, { w: 900, fill: C.navy }));
+    for (let i = 0; i < 6; i++) pop(t, l0 + 4.8 + i * .4, 1360, 270 + i * 105, () => { shadowCard(0, 0, 760, 86, 20); T(String(i + 1), -340, 3, 34, { w: 900, fill: C.blue2 }); T('Международный журнал · Q' + (i < 3 ? 1 : 2), -290, 3, 30, { align: 'left', w: 700, fill: C.navy });
+      const m = 97 - i * 3; x.fillStyle = C.ok + '22'; rr(200, -24, 150, 48, 24); x.fill(); T(m + '% тема', 275, 3, 24, { w: 800, fill: C.ok }); });
+    pop(t, l1, 1360, 930, () => { x.fillStyle = grad(-330, 0, 330, 0, C.blue2, C.violet); rr(-330, -50, 660, 100, 50); x.fill(); T('📈 Рост рейтинга вуза', 0, 3, 40, { w: 900, fill: '#fff' }); });
+  },
+  versions(t, S) {
+    const l0 = S.lines[0];
+    T('03', 300, 160, 120, { w: 900, fill: '#0059FF22', align: 'left', a: eo(p(t, l0, l0 + .4)) });
+    kinetic([['Полный'], ['контроль'], ['версий', C.blue2]], 960, 200, 64, l0 + .1, .25, t);
+    x.save(); x.strokeStyle = '#CBD5E1'; x.lineWidth = 8; x.beginPath(); x.moveTo(360, 520); x.lineTo(360 + 1200 * eo(p(t, l0 + 1, l0 + 3)), 520); x.stroke(); x.restore();
+    [['v1', 'Черновик', '12.09'], ['v2', 'Правки рецензента', '19.09'], ['v3', 'Финальная версия', '24.09']].forEach(([v, s, d], i) => pop(t, l0 + 1.5 + i * .9, 460 + i * 500, 520, () => { x.fillStyle = i === 2 ? C.ok : C.blue2; x.beginPath(); x.arc(0, 0, 56, 0, 7); x.fill(); T(v, 0, 3, 38, { w: 900, fill: '#fff' }); shadowCard(0, 150, 360, 130, 22); T(s, 0, 132, 30, { w: 800, fill: C.navy }); T('💬 рецензии · ' + d, 0, 175, 24, { w: 600, fill: C.dim }); }));
+    pop(t, l0 + 6, 960, 870, () => { x.fillStyle = C.ok; rr(-360, -50, 720, 100, 50); x.fill(); T('🛡  Безопасно · удаление невозможно', 0, 3, 36, { w: 900, fill: '#fff' }); });
+  },
+  rector(t, S) {
+    const [l0, l1, l2] = S.lines;
+    kinetic([['Панель'], ['Ректора', C.blue2]], 960, 110, 60, l0, .25, t);
+    pop(t, l1 - .3, 960, 560, () => { shadowCard(0, 0, 1700, 760, 30); x.fillStyle = C.navy; rr(-850, -380, 1700, 70, [30, 30, 0, 0]); x.fill(); T('📊  Наука в реальном времени', -810, -344, 30, { align: 'left', w: 800, fill: '#fff' }); }, .45);
+    if (t > l1) {
+      const deps = [['Физика', .92], ['Химия', .74], ['Экономика', .63], ['IT', .88], ['Медицина', .55]];
+      T('Статьи по кафедрам', 340, 290, 28, { w: 800, fill: C.navy });
+      deps.forEach(([d, v], i) => { const q = eo(p(t, l1 + .3 + i * .2, l1 + 1.3 + i * .2)), Y = 350 + i * 80; T(d, 140, Y + 22, 24, { align: 'left', w: 700, fill: C.dim }); x.fillStyle = '#E2E8F0'; rr(290, Y, 360, 40, 12); x.fill(); x.fillStyle = C.blue2; rr(290, Y, 360 * v * q, 40, 12); x.fill(); });
+      const pie = [[.45, C.ok, 'Готовы'], [.35, C.blue2, 'На рецензии'], [.2, C.warn, 'Задержка']]; let a0 = -Math.PI / 2; const pq = eo(p(t, l1 + 1, l1 + 2.5));
+      pie.forEach(([v, col, s], i) => { x.fillStyle = col; x.beginPath(); x.moveTo(960, 540); x.arc(960, 540, 190, a0, a0 + v * Math.PI * 2 * pq); x.fill(); a0 += v * Math.PI * 2 * pq; T('● ' + s + ' ' + Math.round(v * 100) + '%', 800 + i * 0, 790 + i * 0, 0); });
+      x.fillStyle = '#fff'; x.beginPath(); x.arc(960, 540, 100, 0, 7); x.fill(); T('Статусы', 960, 543, 26, { w: 800, fill: C.navy });
+      pie.forEach(([v, col, s], i) => T('● ' + s, 840 + i * 0, 790 + i * 40, 24, { align: 'left', w: 700, fill: col, a: pq }));
+      [['Редакторы с задержкой', '2', C.bad], ['Готовы к публикации', '18', C.ok], ['KPI редакторов', '87%', C.blue2]].forEach(([s, v, col], i) => pop(t, l1 + 2 + i * .5, 1530, 330 + i * 170, () => { x.fillStyle = '#F8FAFC'; rr(-260, -70, 520, 140, 20); x.fill(); T(v, -220, 0, 64, { align: 'left', w: 900, fill: col }); T(s, -50, 0, 24, { align: 'left', w: 700, fill: C.navy }); }));
+    }
+    const cl = p(t, l2 + .2, l2 + 1.2), cx = 1700 - 250 * eio(cl), cy = 980 - 120 * eio(cl);
+    if (t > l2) { pop(t, l2, 1450, 860, () => { x.fillStyle = C.blue2; rr(-230, -42, 460, 84, 42); x.fill(); T('⬇ Отчёт для Министерства', 0, 3, 28, { w: 800, fill: '#fff' }); });
+      x.save(); x.fillStyle = C.navy; x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx + 26, cy + 60); x.lineTo(cx + 36, cy + 34); x.lineTo(cx + 62, cy + 30); x.closePath(); x.fill(); x.restore();
+      [['PDF', C.bad], ['XLSX', C.ok]].forEach(([s, col], i) => { const q = eo(p(t, l2 + 1.3 + i * .2, l2 + 2 + i * .2)); if (!q) return; x.save(); x.globalAlpha *= q; x.translate(i ? 1790 : 1110, 870 - 30 * q); docIcon(0, 0, 1, col); T(s, 0, 70, 26, { w: 900, fill: col }); x.restore(); }); }
+  },
+  security(t, S) {
+    const [l0, l1] = S.lines;
+    // Упрощённый контур карты Узбекистана
+    const pts = [[0, .35], [.12, .2], [.3, .25], [.42, .1], [.55, .2], [.62, .45], [.78, .5], [.95, .55], [1, .7], [.85, .8], [.7, .72], [.58, .85], [.45, .75], [.4, .95], [.25, .9], [.2, .65], [.05, .6]];
+    const mk = eo(p(t, l1 - .5, l1 + .8)), MX = 230, MY = 260, MW = 820, MH = 560;
+    if (mk) { x.save(); x.globalAlpha *= mk; x.fillStyle = C.blue2 + '22'; x.strokeStyle = C.blue2; x.lineWidth = 5; x.beginPath(); pts.forEach(([a, b], i) => { const X = MX + a * MW, Y = MY + b * MH; i ? x.lineTo(X, Y) : x.moveTo(X, Y); }); x.closePath(); x.fill(); x.stroke();
+      T('УЗБЕКИСТАН', MX + MW * .5, MY + MH * .5, 34, { w: 900, fill: C.navy });
+      [[.62, .62], [.35, .45], [.85, .65]].forEach(([a, b], i) => pop(t, l1 + .5 + i * .4, MX + a * MW, MY + b * MH - 70, () => { shadowCard(0, 0, 90, 90, 18); T('🗄', 0, 3, 50, {}); })); x.restore(); }
+    kinetic([['Безопасность'], ['и'], ['закон', C.blue2]], 960, 130, 60, l0, .25, t);
+    pop(t, l0 + .6, 1440, 300, () => { x.fillStyle = grad(-120, -140, 120, 140, C.blue2, C.ok); x.beginPath(); x.moveTo(0, -140); x.lineTo(120, -90); x.lineTo(110, 40); x.quadraticCurveTo(80, 120, 0, 150); x.quadraticCurveTo(-80, 120, -110, 40); x.lineTo(-120, -90); x.closePath(); x.fill(); check(0, 0, 2.6, '#fff'); });
+    [['Закон «О персональных данных»', l0 + 1.5], ['Серверы внутри страны', l1 + .4], ['Встроенный антивирус', l1 + 2.6], ['Готовность к экспертизе', l1 + 4.6]].forEach(([s, tt], i) => pop(t, tt, 1440, 560 + i * 110, () => { shadowCard(0, 0, 640, 90, 45); check(-270, 0, .9); T(s, -220, 3, 30, { align: 'left', w: 800, fill: C.navy }); }));
+  },
+  cta(t, S) {
+    const [l0, l1, l2] = S.lines;
+    kinetic([['Шаг'], ['к'], ['современной', C.blue2], ['науке']], 960, 140, 62, l0, .22, t);
+    pop(t, l1 - .2, 520, 560, () => { shadowCard(0, 0, 520, 520, 34); x.fillStyle = C.blue2; rr(-260, -260, 520, 100, [34, 34, 0, 0]); x.fill(); T('Октябрь', 0, -208, 40, { w: 900, fill: '#fff' });
+      for (let i = 0; i < 28; i++) { const X = -195 + (i % 7) * 65, Y = -110 + Math.floor(i / 7) * 80, sel = i === 16; if (sel) { x.fillStyle = C.ok; x.beginPath(); x.arc(X, Y, 30, 0, 7); x.fill(); } T(String(i + 1), X, Y + 2, 28, { w: sel ? 900 : 600, fill: sel ? '#fff' : C.navy }); }
+      T('15 минут — и вы увидите всё', 0, 230, 26, { w: 700, fill: C.dim }); });
+    pop(t, l1 + 1.2, 1360, 420, () => { const pl = 1 + .03 * Math.sin(t * 6); x.scale(pl, pl); x.fillStyle = grad(-380, 0, 380, 0, C.blue2, C.violet); x.shadowColor = C.blue2; x.shadowBlur = 40; rr(-380, -64, 760, 128, 64); x.fill(); x.shadowBlur = 0; T('Записаться на 15-минутное ДЕМО', 0, 3, 38, { w: 900, fill: '#fff' }); });
+    pop(t, l1 + 2.2, 1360, 580, () => { x.strokeStyle = C.blue2; x.lineWidth = 5; rr(-380, -54, 760, 108, 54); x.stroke(); x.fillStyle = '#fff'; rr(-380, -54, 760, 108, 54); x.fill(); x.stroke(); T('Попробовать пилотный проект', 0, 3, 36, { w: 900, fill: C.blue2 }); });
+    const ca = eo(p(t, l2 - .3, l2 + .3));
+    x.save(); x.globalAlpha *= ca; shadowCard(1360, 820, 760, 230, 30); logo(1060, 770, .45); T('Nextin', 1110, 772, 40, { align: 'left', w: 900, fill: C.navy });
+    T('📞 +998 77 777 16 68', 1060, 840, 32, { align: 'left', w: 800, fill: C.navy }); T('✈ @dosd_nextin    🌐 nextin.uz', 1060, 895, 30, { align: 'left', w: 700, fill: C.blue2 }); x.restore();
+  },
+};
+function captions(t) {
+  const ph = PH.find(s => t >= s[0] - .05 && t <= s[1] + .25); if (!ph) return;
+  const [s0, s1, text] = ph, words = text.split(' '), total = words.reduce((n, w) => n + w.length + 1, 0);
+  let acc = 0, cur = words.length - 1; for (let k = 0; k < words.length; k++) { acc += words[k].length + 1; if (t < s0 + (s1 - s0) * acc / total) { cur = k; break; } }
+  x.save(); x.font = `700 34px ${F}`; const lines = []; let line = [];
+  for (const w of words) { if (x.measureText([...line, w].join(' ')).width > 1500 && line.length) { lines.push(line); line = []; } line.push(w); } lines.push(line);
+  const show = lines.slice(-2), Y0 = 1040 - (show.length - 1) * 44; let idx = words.length - show.flat().length;
+  x.fillStyle = '#0B1F4Dcc'; const bw = Math.max(...show.map(l => x.measureText(l.join(' ')).width)) + 60; rr(CX - bw / 2, Y0 - 30, bw, show.length * 44 + 16, 18); x.fill();
+  show.forEach((L, li) => { let cx = CX - x.measureText(L.join(' ')).width / 2; L.forEach(w => { x.textBaseline = 'middle'; x.fillStyle = idx === cur ? '#FDE047' : '#fff'; x.fillText(w, cx, Y0 + li * 44); cx += x.measureText(w + ' ').width; idx++; }); });
+  x.restore();
+}
+function draw(t) {
+  background(t);
+  for (const id of ORDER) { const S = SC[id]; const k = Math.min(clamp((t - S.start + .02) / .3), clamp((S.end + .02 - t) / .3)); if (k <= 0) continue; x.save(); x.globalAlpha = k; SCN[id](t, S); x.restore(); }
+  captions(t);
+  o.drawImage(buf, 0, 0);
+}
+window.setup = d => { PH = d.phrases; d.scenes.forEach(s => { SC[s.id] = s; ORDER.push(s.id); }); DUR = d.duration; return DUR; };
+window.draw = draw;
+document.fonts.load(`800 40px Inter`).then(() => { window.ready = true; });
+</script></body></html>
