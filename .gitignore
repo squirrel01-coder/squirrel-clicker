@@ -4,3 +4,8 @@ video/science/vo/*.wav
 video/science/mix.wav
 video/science/prev_*.png
 video/science/render.log
+video/school/vo/*.wav
+video/school/mix.wav
+video/school/prev_*.png
+video/school/render.log
+video/school/asr.txt

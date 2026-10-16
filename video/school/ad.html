@@ -1,0 +1,418 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#F4F7FD}canvas{display:block}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// Обзорный ролик «Умная школа и детский сад», 16:9. draw(t) рисует кадр; тайминги — timeline.json.
+const W = 1920, H = 1080, CX = 960;
+const out = document.getElementById('c'), o = out.getContext('2d');
+const buf = document.createElement('canvas'); buf.width = W; buf.height = H; const x = buf.getContext('2d');
+const C = { bg1: '#F4F7FD', bg2: '#E6EEFB', blue: '#0084FF', blue2: '#0059FF', navy: '#0B1F4D', cyan: '#38BDF8', ok: '#10B981', bad: '#EF4444', warn: '#F59E0B', gold: '#F59E0B', txt: '#0B1F4D', dim: '#64748B', card: '#FFFFFF', violet: '#7C3AED', tg: '#229ED9' };
+const F = 'Inter, sans-serif';
+let PH = [], SC = {}, ORDER = [], DUR = 170;
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const p = (t, a, b) => clamp((t - a) / (b - a));
+const eo = v => 1 - Math.pow(1 - v, 3);
+const eio = v => v < .5 ? 4 * v * v * v : 1 - Math.pow(-2 * v + 2, 3) / 2;
+const eb = v => { const s = 1.7; return v <= 0 ? 0 : 1 + (s + 1) * Math.pow(v - 1, 3) + s * Math.pow(v - 1, 2); };
+const rnd = s => { const v = Math.sin(s * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+
+function grad(x0, y0, x1, y1, a = C.blue2, b = C.cyan) { const g = x.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, a); g.addColorStop(1, b); return g; }
+function rr(X, Y, w, h, r) { x.beginPath(); x.roundRect(X, Y, w, h, r); }
+function T(s, X, Y, size, op = {}) {
+  x.save(); x.font = `${op.w || 800} ${size}px ${F}`; x.textAlign = op.align || 'center'; x.textBaseline = 'middle';
+  x.globalAlpha *= op.a ?? 1; x.fillStyle = op.fill || C.txt; if (op.glow) { x.shadowColor = op.glow; x.shadowBlur = 40; }
+  String(s).split('\n').forEach((l, i) => x.fillText(l, X, Y + i * size * (op.lh || 1.15))); x.restore();
+}
+function wrap(s, size, maxW, w = 700) {
+  x.save(); x.font = `${w} ${size}px ${F}`; const L = []; let line = '';
+  for (const word of s.split(' ')) { const t = line ? line + ' ' + word : word; if (x.measureText(t).width > maxW && line) { L.push(line); line = word; } else line = t; }
+  if (line) L.push(line); x.restore(); return L;
+}
+function pop(t, t0, X, Y, fn, d = .35) { const k = eb(p(t, t0, t0 + d)); if (k <= 0) return; x.save(); x.translate(X, Y); x.scale(k, k); x.globalAlpha *= clamp(k * 1.5); fn(); x.restore(); }
+function kinetic(words, X, Y, size, t0, step, t, op = {}) {
+  x.save(); x.font = `${op.w || 900} ${size}px ${F}`;
+  const sp = size * .4, ws = words.map(w => x.measureText(w[0]).width), total = ws.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+  let cx = X - total / 2; x.restore();
+  words.forEach(([w, col], i) => { const a = eb(p(t, t0 + i * step, t0 + i * step + .35));
+    if (a > 0) { x.save(); x.translate(cx + ws[i] / 2, Y + (1 - clamp(a)) * 40); x.scale(a, a); T(w, 0, 0, size, { w: op.w || 900, fill: col || C.txt, glow: op.glow }); x.restore(); }
+    cx += ws[i] + sp; });
+}
+function card(X, Y, w, h, op = {}) {
+  x.save(); if (op.glow) { x.shadowColor = op.glow; x.shadowBlur = 40; }
+  x.fillStyle = op.fill || C.card; rr(X - w / 2, Y - h / 2, w, h, op.r || 34); x.fill(); x.shadowBlur = 0;
+  if (op.stroke !== false) { x.strokeStyle = op.stroke || grad(X - w / 2, Y, X + w / 2, Y); x.lineWidth = 3; rr(X - w / 2, Y - h / 2, w, h, op.r || 34); x.stroke(); }
+  x.restore();
+}
+function logo(X, Y, s, a = 1) {
+  x.save(); x.translate(X, Y); x.scale(s, s); x.globalAlpha *= a;
+  x.fillStyle = grad(-60, -60, 60, 60, '#1A6BFF', C.blue);
+  x.beginPath(); x.moveTo(-58, 0); x.lineTo(-14, -44); x.lineTo(4, -26); x.lineTo(-22, 0); x.lineTo(4, 26); x.lineTo(-14, 44); x.closePath(); x.fill();
+  x.fillStyle = grad(-20, -60, 60, 60, C.blue, C.cyan);
+  x.beginPath(); x.moveTo(-6, 0); x.lineTo(32, -38); x.lineTo(70, 0); x.lineTo(32, 38); x.closePath(); x.fill(); x.restore();
+}
+function check(X, Y, s = 1, col = C.ok, bad = false) {
+  x.save(); x.translate(X, Y); x.scale(s, s); x.fillStyle = bad ? C.bad : col; x.beginPath(); x.arc(0, 0, 26, 0, 7); x.fill();
+  x.strokeStyle = '#04120C'; x.lineWidth = 7; x.lineCap = 'round'; x.beginPath();
+  if (bad) { x.moveTo(-9, -9); x.lineTo(9, 9); x.moveTo(9, -9); x.lineTo(-9, 9); } else { x.moveTo(-11, 1); x.lineTo(-3, 9); x.lineTo(12, -8); }
+  x.stroke(); x.restore();
+}
+function phone(X, Y, w, h, cb, tilt = 0) {
+  x.save(); x.translate(X, Y); x.rotate(tilt);
+  x.shadowColor = '#0B205044'; x.shadowBlur = 60; x.fillStyle = '#0B1020'; rr(-w / 2, -h / 2, w, h, 64); x.fill(); x.shadowBlur = 0;
+  x.strokeStyle = '#2A3A66'; x.lineWidth = 6; rr(-w / 2, -h / 2, w, h, 64); x.stroke();
+  x.save(); rr(-w / 2 + 16, -h / 2 + 16, w - 32, h - 32, 50); x.clip(); x.fillStyle = '#0F172A'; x.fillRect(-w / 2, -h / 2, w, h);
+  x.translate(-w / 2 + 16, -h / 2 + 16); cb(w - 32, h - 32); x.restore();
+  x.fillStyle = '#000'; rr(-60, -h / 2 + 28, 120, 30, 15); x.fill(); x.restore();
+}
+function msg(X, Y, w, s, mine, a, col, size = 32) {
+  const L = wrap(s, size, w - 48, 500), h = 28 + L.length * size * 1.3; if (a <= 0) return h;
+  x.save(); x.globalAlpha *= a; x.fillStyle = col || (mine ? C.blue2 : '#1F2A44'); rr(mine ? X - w : X, Y, w, h, 24); x.fill();
+  L.forEach((l, i) => T(l, (mine ? X - w : X) + 22, Y + 14 + size * .65 + i * size * 1.3, size, { align: 'left', w: 500 })); x.restore(); return h;
+}
+function chip(s, X, Y, col, size = 34) {
+  x.save(); x.font = `700 ${size}px ${F}`; const w = x.measureText(s).width + 48; x.restore();
+  x.fillStyle = col; rr(X - w / 2, Y - size * .85, w, size * 1.7, size * .85); x.fill(); T(s, X, Y + 2, size, { w: 700 }); return w;
+}
+
+
+function shadowCard(X, Y, w, h, r = 28, fill = '#fff') { x.save(); x.shadowColor = '#0B1F4D22'; x.shadowBlur = 40; x.shadowOffsetY = 14; x.fillStyle = fill; rr(X - w / 2, Y - h / 2, w, h, r); x.fill(); x.restore(); }
+function background(t) {
+  const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, C.bg1); g.addColorStop(1, C.bg2); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  [[300 + 80 * Math.sin(t * .2), 200, '#38BDF8', 600], [1650 + 60 * Math.cos(t * .17), 900, '#7C3AED', 600]].forEach(([X, Y, col, R]) => { const r = x.createRadialGradient(X, Y, 0, X, Y, R); r.addColorStop(0, col + '22'); r.addColorStop(1, col + '00'); x.fillStyle = r; x.fillRect(0, 0, W, H); });
+  x.save(); x.fillStyle = '#0B1F4D10'; for (let i = 0; i < 40; i++) for (let j = 0; j < 23; j++) { x.beginPath(); x.arc(24 + i * 48, 24 + j * 48, 1.6, 0, 7); x.fill(); } x.restore();
+}
+function icon(s, X, Y, size) { T(s, X, Y, size, { w: 400 }); }
+function docIcon(X, Y, s = 1, col = C.blue2) { x.save(); x.translate(X, Y); x.scale(s, s); x.fillStyle = '#fff'; x.strokeStyle = col; x.lineWidth = 4; rr(-40, -52, 80, 104, 10); x.fill(); x.stroke(); x.fillStyle = col + '55'; for (let i = 0; i < 4; i++) { rr(-26, -30 + i * 18, i === 3 ? 30 : 52, 7, 3); x.fill(); } x.restore(); }
+
+
+// ---------- камеры: кадры CCTV (6 к/с, туда-обратно) ----------
+const CAM = {};
+function camImg(name, t) { const a = CAM[name], n = a.length; let k = Math.floor(t * 6) % (2 * n - 2); if (k >= n) k = 2 * n - 2 - k; return a[k]; }
+const CAMNO = { yard: '01', hall: '02', class: '03', gate: '04', night: '05', kids: '06' };
+const CAMNAME = { yard: 'Двор', hall: 'Коридор 2 эт.', class: 'Класс 5-Б', gate: 'Вход', night: 'Коридор 1 эт.', kids: 'Группа «Солнышко»' };
+function feed(name, X, Y, w, h, t, op = {}) {
+  x.save(); x.translate(X, Y);
+  x.shadowColor = '#0B1F4D44'; x.shadowBlur = 30; x.fillStyle = '#000'; rr(-w / 2, -h / 2, w, h, op.r ?? 18); x.fill(); x.shadowBlur = 0;
+  x.save(); rr(-w / 2, -h / 2, w, h, op.r ?? 18); x.clip();
+  const im = camImg(name, t), ar = w / h, sw = Math.min(640, 360 * ar), sh = sw / ar, z = op.zoom || 1;
+  x.drawImage(im, (640 - sw / z) / 2, (360 - sh / z) / 2, sw / z, sh / z, -w / 2, -h / 2, w, h);
+  if (op.dim) { x.fillStyle = `rgba(5,10,25,${op.dim})`; x.fillRect(-w / 2, -h / 2, w, h); }
+  x.fillStyle = '#ffffff08'; for (let yy = -h / 2; yy < h / 2; yy += 4) x.fillRect(-w / 2, yy, w, 1);
+  const fs = Math.max(14, Math.min(26, w / 28));
+  if (!op.bare) {
+    const lab = `CAM ${CAMNO[name]} · ${CAMNAME[name]}`; x.font = `700 ${fs * .8}px ${F}`; x.fillStyle = '#00000088'; rr(-w / 2 + 10, -h / 2 + 10, x.measureText(lab).width + 22, fs * 1.6, 6); x.fill();
+    T(lab, -w / 2 + 20, -h / 2 + 10 + fs * .8, fs * .8, { align: 'left', w: 700, fill: '#fff' });
+    if (Math.floor(t * 2) % 2 === 0) { x.fillStyle = C.bad; x.beginPath(); x.arc(w / 2 - fs * 3.6, -h / 2 + 10 + fs * .8, fs * .35, 0, 7); x.fill(); }
+    T('REC', w / 2 - 16, -h / 2 + 10 + fs * .8, fs * .8, { align: 'right', w: 800, fill: '#fff' });
+    const sec = Math.floor((op.t0 ?? 0) + t), hh = op.hh ?? 11, mm = (op.mm ?? 24) + Math.floor(sec / 60) % 60, ss = sec % 60;
+    T(`16.10.2026  ${String(hh).padStart(2, '0')}:${String(mm % 60).padStart(2, '0')}:${String(ss).padStart(2, '0')}`, -w / 2 + 16, h / 2 - fs, fs * .75, { align: 'left', w: 600, fill: '#fff' });
+  }
+  if (op.tag) { const [s, col] = op.tag; x.font = `800 ${fs}px ${F}`; const tw = x.measureText(s).width + 40; x.fillStyle = col || C.ok; rr(-tw / 2, h / 2 - fs * 3.2, tw, fs * 1.8, fs * .9); x.fill(); T(s, 0, h / 2 - fs * 2.3, fs, { w: 800, fill: '#fff' }); }
+  x.restore();
+  if (op.border) { x.strokeStyle = op.border; x.lineWidth = 6; rr(-w / 2, -h / 2, w, h, op.r ?? 18); x.stroke(); }
+  x.restore();
+}
+// ---------- иконки файлов ----------
+const FILES = { xls: ['#1D6F42', 'X', 'Excel'], doc: ['#2B579A', 'W', 'Word'], pdf: ['#E5252A', 'PDF', 'PDF'], tg: ['#229ED9', '✈', 'Чат'] };
+function fileIcon(kind, X, Y, s = 1, rot = 0, a = 1) {
+  x.save(); x.translate(X, Y); x.rotate(rot); x.scale(s, s); x.globalAlpha *= a;
+  if (kind === 'journal') { x.fillStyle = '#8B5A2B'; rr(-50, -66, 100, 132, 8); x.fill(); x.fillStyle = '#A97142'; rr(-42, -66, 92, 132, 6); x.fill(); x.fillStyle = '#F5E6C8'; rr(-28, -40, 64, 26, 4); x.fill(); T('ЖУРНАЛ', 4, -27, 12, { w: 900, fill: '#5B3A1A' }); x.fillStyle = '#5B3A1A'; for (let i = 0; i < 5; i++) x.fillRect(-50, -54 + i * 26, 10, 6); x.restore(); return; }
+  if (kind === 'folder') { x.fillStyle = '#E8A93B'; rr(-60, -44, 50, 20, 6); x.fill(); x.fillStyle = '#F6C453'; rr(-60, -34, 120, 84, 8); x.fill(); x.fillStyle = '#fff'; rr(-44, -46, 88, 30, 3); x.fill(); x.fillStyle = '#F9D477'; rr(-60, -18, 120, 68, 8); x.fill(); T('Папка', 0, 18, 18, { w: 800, fill: '#7A5A10' }); x.restore(); return; }
+  if (kind === 'chat') { x.fillStyle = '#229ED9'; x.beginPath(); x.arc(0, 0, 50, 0, 7); x.fill(); T('✈', -2, 2, 46, { w: 400, fill: '#fff' }); x.fillStyle = C.bad; x.beginPath(); x.arc(38, -38, 24, 0, 7); x.fill(); T(String(20 + Math.floor(rnd(X) * 80)), 38, -37, 20, { w: 900, fill: '#fff' }); x.restore(); return; }
+  const [col, letter] = FILES[kind];
+  x.fillStyle = '#fff'; x.strokeStyle = '#CBD5E1'; x.lineWidth = 3; x.beginPath(); x.moveTo(-44, -60); x.lineTo(24, -60); x.lineTo(44, -40); x.lineTo(44, 60); x.lineTo(-44, 60); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = '#E2E8F0'; x.beginPath(); x.moveTo(24, -60); x.lineTo(24, -40); x.lineTo(44, -40); x.closePath(); x.fill();
+  x.fillStyle = col + '55'; for (let i = 0; i < 4; i++) { rr(-30, 14 + i * 10, i === 3 ? 34 : 60, 5, 2); x.fill(); }
+  x.fillStyle = col; rr(-58, -36, letter.length > 1 ? 80 : 56, 46, 8); x.fill(); T(letter, letter.length > 1 ? -18 : -30, -12, letter.length > 1 ? 24 : 32, { w: 900, fill: '#fff' });
+  x.restore();
+}
+function bell(X, Y, title, body, a, col = C.blue2, w = 620) {
+  if (a <= 0) return; x.save(); x.globalAlpha *= clamp(a); x.translate(X, Y - (1 - eo(clamp(a))) * 40);
+  shadowCard(0, 0, w, 120, 26); x.fillStyle = col; rr(-w / 2 + 20, -36, 72, 72, 18); x.fill(); T('🔔', -w / 2 + 56, 2, 36, { w: 400 });
+  T(title, -w / 2 + 112, -20, 24, { align: 'left', w: 800, fill: C.dim }); T(body, -w / 2 + 112, 16, 28, { align: 'left', w: 800, fill: C.navy }); x.restore();
+}
+function tgChat(w, h, t, items, head = 'Школа · бот', sub = 'онлайн 24/7') {
+  x.fillStyle = '#E6EBF2'; x.fillRect(0, 0, w, h);
+  x.fillStyle = '#fff'; x.fillRect(0, 0, w, 130); x.fillStyle = C.tg; x.beginPath(); x.arc(70, 80, 34, 0, 7); x.fill(); T('🤖', 70, 82, 36, { w: 400 });
+  T(head, 120, 66, 28, { align: 'left', w: 800, fill: C.navy }); T(sub, 120, 100, 22, { align: 'left', w: 600, fill: C.tg });
+  let yy = 150;
+  for (const it of items) { const a = eo(p(t, it.t, it.t + .3)); if (a <= 0) break;
+    if (it.typing) { if (t < it.t + it.typing) { x.fillStyle = '#fff'; rr(20, yy, 110, 56, 24); x.fill(); for (let k = 0; k < 3; k++) { x.fillStyle = '#94A3B8'; x.beginPath(); x.arc(52 + k * 24, yy + 28 + Math.sin(t * 10 + k) * 5, 7, 0, 7); x.fill(); } yy += 72; } continue; }
+    if (it.doc) { x.save(); x.globalAlpha *= a; x.fillStyle = '#fff'; rr(20, yy, w - 100, 110, 22); x.fill(); fileIcon('pdf', 80, yy + 55, .6); T(it.doc, 130, yy + 40, 24, { align: 'left', w: 800, fill: C.navy }); T(it.sub || '', 130, yy + 76, 20, { align: 'left', w: 600, fill: C.dim }); x.restore(); yy += 126; continue; }
+    const mine = !!it.me, L = wrap(it.s, 26, w - 140, 500), hh = 24 + L.length * 34, bw = Math.min(w - 80, Math.max(...L.map(l => { x.font = `500 26px ${F}`; return x.measureText(l).width; })) + 44);
+    x.save(); x.globalAlpha *= a; x.fillStyle = mine ? '#DCF8C6' : '#fff'; rr(mine ? w - 20 - bw : 20, yy, bw, hh, 22); x.fill();
+    L.forEach((l, i) => T(l, (mine ? w - 20 - bw : 20) + 22, yy + 29 + i * 34, 26, { align: 'left', w: 500, fill: C.navy })); x.restore(); yy += hh + 16; }
+}
+function tabletUI(X, Y, w, h, cb) { x.save(); x.translate(X, Y); x.shadowColor = '#0B205044'; x.shadowBlur = 50; x.fillStyle = '#1E293B'; rr(-w / 2, -h / 2, w, h, 36); x.fill(); x.shadowBlur = 0; x.fillStyle = '#fff'; rr(-w / 2 + 18, -h / 2 + 18, w - 36, h - 36, 20); x.fill(); x.save(); rr(-w / 2 + 18, -h / 2 + 18, w - 36, h - 36, 20); x.clip(); x.translate(-w / 2 + 18, -h / 2 + 18); cb(w - 36, h - 36); x.restore(); x.restore(); }
+function title(words, t, t0, Y = 110, size = 60) { kinetic(words, 960, Y, size, t0, .2, t); }
+function cursorAt(X, Y, click) { x.save(); x.translate(X, Y); if (click > 0 && click < 1) { x.strokeStyle = C.blue2; x.globalAlpha *= 1 - click; x.lineWidth = 4; x.beginPath(); x.arc(0, 0, 20 + click * 40, 0, 7); x.stroke(); x.globalAlpha = 1; } x.fillStyle = '#0B1F4D'; x.strokeStyle = '#fff'; x.lineWidth = 3; x.beginPath(); x.moveTo(0, 0); x.lineTo(0, 44); x.lineTo(12, 33); x.lineTo(22, 54); x.lineTo(30, 50); x.lineTo(20, 30); x.lineTo(36, 30); x.closePath(); x.fill(); x.stroke(); x.restore(); }
+
+const SCN = {
+  hook(t, S) {
+    const [l0, l1, l2, l3, l4] = S.lines;
+    // 1. вопрос родителя на фоне тёмной камеры
+    const a0 = 1 - eio(p(t, l1 - .4, l1 + .2));
+    if (a0 > 0) { x.save(); x.globalAlpha *= a0;
+      const z = 1 + .06 * p(t, 0, l1); feed('kids', 960, 470, 1500 * z, 844 * z, t, { dim: .62, r: 0, t0: 9, hh: 10, mm: 12 });
+      const hb = 1 + .04 * Math.max(0, Math.sin(t * 7.5)) ** 8;
+      x.save(); x.translate(960, 0); x.scale(hb, hb); x.translate(-960, 0);
+      kinetic([['Что', '#fff'], ['происходит', '#fff'], ['с', '#fff'], ['вашим', '#fff'], ['ребёнком,', '#FDE047']], 960, 410, 76, l0 + 2.2, .18, t, { glow: '#000' });
+      kinetic([['пока', '#fff'], ['вас', '#fff'], ['нет', '#fff'], ['рядом?', '#FDE047']], 960, 520, 76, l0 + 3.4, .18, t, { glow: '#000' });
+      x.restore(); x.restore(); }
+    // 2. стена камер, запись ищут днями
+    const a1 = eo(p(t, l1 - .3, l1 + .4)) * (1 - eio(p(t, l2 - .4, l2 + .2)));
+    if (a1 > 0) { x.save(); x.globalAlpha *= a1;
+      const names = ['yard', 'hall', 'class', 'gate'], gone = t > l1 + 5.6;
+      names.forEach((n, i) => { const k = eb(p(t, l1 + i * .25, l1 + i * .25 + .5)); if (k <= 0) return; const X = 520 + (i % 2) * 880, Y = 290 + Math.floor(i / 2) * 400;
+        x.save(); x.translate(X, Y); x.scale(k, k);
+        if (i === 3 && gone) { x.fillStyle = '#111'; rr(-410, -180, 820, 360, 18); x.fill(); for (let j = 0; j < 80; j++) { x.fillStyle = `rgba(255,255,255,${rnd(j + Math.floor(t * 20) * 7) * .25})`; x.fillRect(-410 + rnd(j * 3.1 + Math.floor(t * 20)) * 820, -180 + rnd(j * 7.7 + Math.floor(t * 20)) * 360, 30, 3); } T('⚠ ЗАПИСЬ НЕ НАЙДЕНА', 0, 0, 46, { w: 900, fill: C.bad }); }
+        else feed(n, 0, 0, 820, 360, t * (t > l1 + 3 && t < l1 + 5.6 ? 8 : 1), { t0: i * 900 + (t > l1 + 3 ? (t - l1 - 3) * 2400 : 0), hh: 9 });
+        x.restore(); });
+      if (t > l1 + 3) { pop(t, l1 + 3, 960, 490, () => { x.fillStyle = '#0B1020ee'; rr(-330, -60, 660, 120, 60); x.fill(); const days = Math.min(3, 1 + Math.floor((t - l1 - 3) * 1.2)); T(`⏪ Поиск записи… ${days} ${days === 1 ? 'день' : 'дня'}`, 0, 3, 40, { w: 900, fill: '#fff' }); }); }
+      x.restore(); }
+    // 3. хаос из файлов
+    const a2 = eo(p(t, l2 - .3, l2 + .3)) * (1 - eio(p(t, l3 - .4, l3 + .2)));
+    if (a2 > 0) { x.save(); x.globalAlpha *= a2;
+      const kinds = ['journal', 'xls', 'doc', 'chat', 'xls', 'folder', 'xls', 'doc', 'journal', 'chat', 'pdf', 'xls'];
+      for (let i = 0; i < 46; i++) { const t0 = l2 + (i % 23) * .15 + Math.floor(i / 23) * .08, q = p(t, t0, t0 + 1.1); if (q <= 0) continue;
+        const X = 140 + rnd(i * 3.3) * 1640, Yend = 260 + rnd(i * 5.1) * 640, Y = -100 + (Yend + 100) * eo(q);
+        fileIcon(kinds[i % kinds.length], X, Y, .75 + rnd(i) * .5, (rnd(i * 9) - .5) * .8 + Math.sin(t * 2 + i) * .05); }
+      [['📊 Таблиц Excel: 47', C.ok, 330], ['📄 Отчётов в Word: 112', '#2B579A', 960], ['💬 Родительских чатов: 30', C.tg, 1590]].forEach(([s, col, X], i) =>
+        pop(t, l2 + 1.4 + i * 1.3, X, 140, () => { x.fillStyle = col; x.shadowColor = '#0006'; x.shadowBlur = 30; rr(-290, -50, 580, 100, 50); x.fill(); x.shadowBlur = 0; T(s, 0, 3, 36, { w: 900, fill: '#fff' }); }));
+      x.restore(); }
+    // 4. три героя
+    const a3 = eo(p(t, l3 - .3, l3 + .3)) * (1 - eio(p(t, l4 - .3, l4 + .3)));
+    if (a3 > 0) { x.save(); x.globalAlpha *= a3;
+      [['👔', 'Директор', 'тонет в бумагах', 'journal'], ['👩‍🏫', 'Учитель', 'тонет в рутине', 'xls'], ['👨‍👩‍👧', 'Родитель', 'узнаёт последним', 'chat']].forEach(([ic, n, d, f], i) =>
+        pop(t, l3 + i * 1.6, 420 + i * 540, 480, () => { shadowCard(0, 0, 440, 560, 36, '#141C33');
+          for (let k = 0; k < 5; k++) fileIcon(f, -110 + k * 55, 170 - Math.max(0, (t - l3 - i * 1.6) * 30 - k * 20) % 60 + k * -6, .55, (k - 2) * .2, .9);
+          icon(ic, 0, -150, 120); T(n, 0, -30, 46, { w: 900, fill: '#fff' }); T(d, 0, 30, 34, { w: 700, fill: '#FCA5A5' }); }));
+      x.restore(); }
+    // 5. «Знакомо?» → сборка в одну систему
+    if (t > l4 - .3) {
+      const k = eio(p(t, l4 + 2.2, l4 + 4)), z = eb(p(t, l4 - .2, l4 + .3));
+      x.save(); x.globalAlpha *= 1 - k; x.translate(960, 420); x.scale(z, z); T('Знакомо?', 0, 0, 150, { w: 900, fill: '#FDE047', glow: '#000' }); x.restore();
+      const kinds = ['journal', 'xls', 'doc', 'chat', 'folder', 'pdf'];
+      for (let i = 0; i < 18; i++) { const q = eio(p(t, l4 + 1.4 + i * .04, l4 + 3 + i * .04)), ang = i / 18 * Math.PI * 2 + t * .3, R = 620 * (1 - q);
+        if (q < 1) fileIcon(kinds[i % 6], 960 + Math.cos(ang) * R * 1.3, 470 + Math.sin(ang) * R * .7, .7 * (1 - q * .7), ang, 1 - q); }
+      pop(t, l4 + 3, 960, 470, () => { const pl = 1 + .02 * Math.sin(t * 4); x.scale(pl, pl); x.shadowColor = C.cyan; x.shadowBlur = 80; x.fillStyle = grad(-520, -170, 520, 170, C.blue2, C.violet); rr(-620, -170, 1240, 340, 60); x.fill(); x.shadowBlur = 0;
+        icon('🏫', -480, -40, 110); icon('🧸', 480, -40, 110); T('Умная система', 0, -60, 70, { w: 900, fill: '#fff' }); T('для школ и детских садов', 0, 30, 48, { w: 800, fill: '#E0E7FF' }); T('всё в одном месте', 0, 110, 32, { w: 700, fill: '#C7D2FE' }); }, .5);
+    }
+  },
+  hemis(t, S) {
+    const [l0, l1] = S.lines;
+    title([['Не'], ['заменяем'], ['—'], ['интегрируемся', C.blue2]], t, l0, 110, 62);
+    pop(t, l0 + .4, 470, 440, () => { shadowCard(0, 0, 520, 300, 34); x.fillStyle = '#0F3D91'; rr(-260, -150, 520, 90, [34, 34, 0, 0]); x.fill(); T('HEMIS', 0, -104, 46, { w: 900, fill: '#fff' }); T('и гос. системы,', 0, 0, 34, { w: 800, fill: C.navy }); T('которыми вы уже пользуетесь', 0, 50, 26, { w: 600, fill: C.dim }); });
+    pop(t, l0 + 1.2, 1450, 440, () => { x.shadowColor = C.blue2; x.shadowBlur = 40; x.fillStyle = grad(-260, -150, 260, 150, C.blue2, C.violet); rr(-260, -150, 520, 300, 34); x.fill(); x.shadowBlur = 0; T('Умная система', 0, -30, 46, { w: 900, fill: '#fff' }); T('школа · детский сад', 0, 30, 30, { w: 700, fill: '#E0E7FF' }); });
+    // «замена» перечёркнута, затем поток данных
+    const cr = eo(p(t, l0 + 2.6, l0 + 3.2));
+    if (t > l0 + 2) { pop(t, l0 + 2, 960, 300, () => { x.fillStyle = '#FEE2E2'; rr(-150, -40, 300, 80, 40); x.fill(); T('Замена', 0, 3, 34, { w: 900, fill: C.bad }); x.strokeStyle = C.bad; x.lineWidth = 7; x.beginPath(); x.moveTo(-140, 0); x.lineTo(-140 + 280 * cr, 0); x.stroke(); }); }
+    const fl = eo(p(t, l0 + 3.4, l0 + 4));
+    if (fl > 0) { x.save(); x.globalAlpha *= fl; x.strokeStyle = C.blue2 + '55'; x.lineWidth = 6; x.setLineDash([14, 12]); x.lineDashOffset = -t * 60; x.beginPath(); x.moveTo(735, 440); x.lineTo(1185, 440); x.stroke(); x.setLineDash([]);
+      for (let i = 0; i < 6; i++) { const q = (t * .6 + i / 6) % 1; x.fillStyle = i % 2 ? C.ok : C.blue2; x.beginPath(); x.arc(735 + 450 * q, 440, 10, 0, 7); x.fill(); }
+      pop(t, l0 + 3.6, 960, 560, () => { x.fillStyle = '#D1FAE5'; rr(-190, -40, 380, 80, 40); x.fill(); T('✓ Интеграция', 0, 3, 34, { w: 900, fill: '#047857' }); }); x.restore(); }
+    [['🤖 Чат-бот', l1 + .5], ['🎥 Камеры с ИИ', l1 + 1.4], ['💳 Оплаты', l1 + 2.3], ['📊 Отчёты', l1 + 3.2]].forEach(([s, tt], i) =>
+      pop(t, tt, 1290 + (i % 2) * 330, 690 + Math.floor(i / 2) * 110, () => { shadowCard(0, 0, 300, 86, 43); T('+ ' + s, 0, 3, 30, { w: 800, fill: C.navy }); }));
+  },
+  bot(t, S) {
+    const [l0, l1, l2] = S.lines;
+    title([['Чат-бот'], ['для'], ['родителей', C.tg]], t, l0, 90, 58);
+    const items = [{ me: 1, s: 'Assalomu alaykum! Ertaga dars soat nechida?', t: l0 + 2 }, { typing: .8, t: l0 + 2.6 }, { s: 'Ertaga darslar 8:30 da boshlanadi ✅', t: l0 + 3.4 },
+      { me: 1, s: 'Какое меню сегодня в саду?', t: l0 + 5.4 }, { typing: .7, t: l0 + 6 }, { s: 'Плов, салат, компот 🍲', t: l0 + 6.7 },
+      { me: 1, s: 'Нужна справка с места учёбы', t: l2 + 1.5 }, { typing: .9, t: l2 + 2.1 }, { doc: 'Справка_Алиев_А.pdf', sub: 'с печатью · за 1 минуту', t: l2 + 3 }];
+    const scroll = t > l2 + 1.2 ? eio(p(t, l2 + 1.2, l2 + 1.8)) * 330 : 0;
+    pop(t, l0 + .3, 560, 520, () => phone(0, 0, 500, 800, (w, h) => { x.save(); x.translate(0, -scroll); tgChat(w, h + scroll, t, items); x.restore(); }), .5);
+    pop(t, l0 + 1.2, 1050, 250, () => { x.fillStyle = C.ok; rr(-90, -40, 180, 80, 40); x.fill(); T('24/7', 0, 3, 40, { w: 900, fill: '#fff' }); });
+    pop(t, l0 + 2.2, 1340, 250, () => { shadowCard(0, 0, 340, 80, 40); T("🇺🇿 O'zbek · Русский", 0, 3, 30, { w: 800, fill: C.navy }); });
+    const chips = [['📅', 'Расписание'], ['🍽', 'Меню'], ['📚', 'Домашнее задание'], ['💳', 'Сумма оплаты'], ['👥', 'Дата собрания']];
+    const out = eio(p(t, l2 - .4, l2 + .2));
+    chips.forEach(([ic, s], i) => pop(t, l1 + .2 + i * .9, 1100 + (i % 2) * 420, 400 + Math.floor(i / 2) * 120, () => { x.globalAlpha *= 1 - out; shadowCard(0, 0, 390, 96, 48); icon(ic, -150, 2, 44); T(s, -110, 3, 30, { align: 'left', w: 800, fill: C.navy }); }));
+    pop(t, l1 + 5.2, 1310, 780, () => { x.globalAlpha *= 1 - out; x.fillStyle = grad(-260, 0, 260, 0, C.blue2, C.cyan); rr(-260, -50, 520, 100, 50); x.fill(); T('⏱ Ответ за 2 секунды', 0, 3, 36, { w: 900, fill: '#fff' }); });
+    if (t > l2 - .2) {
+      pop(t, l2, 1310, 470, () => { shadowCard(0, 0, 640, 300, 34); T('Канцелярия', 0, -100, 34, { w: 900, fill: C.dim });
+        for (let i = 0; i < 7; i++) icon('🧍', -240 + i * 80, 0, 64);
+        const c = eo(p(t, l2 + 1.6, l2 + 2.2)); x.strokeStyle = C.bad; x.lineWidth = 10; x.lineCap = 'round'; x.beginPath(); x.moveTo(-280, -60); x.lineTo(-280 + 560 * c, -60 + 160 * c); x.stroke(); T('очередь', 0, 100, 30, { w: 800, fill: C.bad, a: c }); });
+      pop(t, l2 + 3.4, 1310, 760, () => { x.fillStyle = C.ok; rr(-300, -54, 600, 108, 54); x.fill(); T('📄 Справка без очередей', 0, 3, 38, { w: 900, fill: '#fff' }); });
+    }
+  },
+  kinder(t, S) {
+    const [l0, l1, l2] = S.lines;
+    title([['🧸'], ['Детский'], ['сад', C.violet]], t, l0, 90, 60);
+    const sw = eio(p(t, l2 - .4, l2 + .3));
+    // планшет воспитателя
+    if (sw < 1) { x.save(); x.globalAlpha *= 1 - sw;
+      pop(t, l0 + .8, 560, 520, () => tabletUI(0, 0, 760, 600, (w, h) => { x.fillStyle = C.violet; x.fillRect(0, 0, w, 80); T('Группа «Солнышко» · воспитатель', 30, 40, 26, { align: 'left', w: 800, fill: '#fff' });
+        [['🍳', 'Поел'], ['😴', 'Спал'], ['🎨', 'Занятие'], ['🌳', 'Прогулка']].forEach(([ic, s], i) => { const on = t > l1 + .8 + i * 1.6, X = 40 + (i % 2) * 350, Y = 110 + Math.floor(i / 2) * 200;
+          x.fillStyle = on ? '#D1FAE5' : '#F1F5F9'; rr(X, Y, 320, 170, 24); x.fill(); icon(ic, X + 80, Y + 85, 70); T(s, X + 140, Y + 85, 34, { align: 'left', w: 900, fill: C.navy }); if (on) check(X + 280, Y + 40, .8); });
+        T('2 касания — и родитель уже знает', w / 2, h - 30, 24, { w: 700, fill: C.dim }); }), .5);
+      const tapI = Math.floor((t - l1 - .3) / 1.6); if (t > l1 && tapI >= 0 && tapI < 4) { const X = 560 - 380 + 18 + 40 + (tapI % 2) * 350 + 160, Y = 520 - 300 + 18 + 110 + Math.floor(tapI / 2) * 200 + 85; cursorAt(X, Y, p(t, l1 + .5 + tapI * 1.6, l1 + .9 + tapI * 1.6)); }
+      x.restore(); }
+    // телефон родителя с дневником
+    pop(t, l0 + 1.6, 1380, 520, () => phone(0, 0, 500, 800, (w, h) => { x.fillStyle = '#F8FAFC'; x.fillRect(0, 0, w, h); x.fillStyle = C.violet; x.fillRect(0, 0, w, 130);
+      T('Дневник дня', 30, 70, 32, { align: 'left', w: 900, fill: '#fff' }); T('Мадина · «Солнышко»', 30, 106, 22, { align: 'left', w: 600, fill: '#EDE9FE' });
+      if (t < l2 + .5) { [['🍳', 'Завтрак', 'каша, чай — всё съела'], ['😴', 'Сон', '13:00–15:00, 2 часа'], ['🎨', 'Занятия', 'рисование, музыка'], ['🌳', 'Прогулка', '10:30–11:30']].forEach(([ic, n, d], i) => { const a = eo(p(t, l1 + 1 + i * 1.6, l1 + 1.4 + i * 1.6)); if (a <= 0) return;
+          x.save(); x.globalAlpha *= a; x.fillStyle = '#fff'; rr(16, 150 + i * 100, w - 32, 88, 18); x.fill(); icon(ic, 60, 194 + i * 100, 40); T(n, 100, 176 + i * 100, 22, { align: 'left', w: 800, fill: C.dim }); T(d, 100, 208 + i * 100, 24, { align: 'left', w: 700, fill: C.navy }); x.restore(); });
+        const pa = eo(p(t, l1 + 7.5, l1 + 8)); if (pa > 0) { x.save(); x.globalAlpha *= pa; T('📷 Фотоотчёт группы', 20, 580, 24, { align: 'left', w: 800, fill: C.navy }); for (let k = 0; k < 2; k++) { x.save(); x.translate(20 + k * 222 + 106, 680); x.restore(); feed(k ? 'yard' : 'class', 20 + k * 222 + 106, 680, 210, 140, t, { bare: 1, r: 14 }); } x.restore(); } }
+      else { const a = eo(p(t, l2 + 6.5, l2 + 7)); x.save(); x.globalAlpha *= a; x.fillStyle = '#D1FAE5'; rr(16, 160, w - 32, 150, 20); x.fill(); T('🔔 17:42', 40, 200, 24, { align: 'left', w: 800, fill: '#047857' }); T('Мадину забрал папа', 40, 240, 28, { align: 'left', w: 900, fill: C.navy }); T('Бахтиёр · в списке ✓', 40, 278, 22, { align: 'left', w: 600, fill: C.dim }); x.restore(); }
+    }), .5);
+    // список доверенных лиц
+    if (sw > 0) { x.save(); x.globalAlpha *= sw;
+      pop(t, l2, 560, 500, () => { shadowCard(0, 0, 720, 600, 34); T('Кто может забрать Мадину', 0, -240, 36, { w: 900, fill: C.navy });
+        [['👩', 'Мама · Дилноза', 1], ['👨', 'Папа · Бахтиёр', 1], ['👵', 'Бабушка · Мукаддам', 1], ['❓', 'Нет в списке', 0]].forEach(([ic, s, ok], i) => { const a = eo(p(t, l2 + 1 + i * .8, l2 + 1.4 + i * .8)); if (a <= 0) return;
+          x.save(); x.globalAlpha *= a; x.fillStyle = ok ? '#F0FDF4' : '#FEF2F2'; rr(-320, -170 + i * 100, 640, 88, 22); x.fill(); icon(ic, -260, -126 + i * 100, 50); T(s, -210, -126 + i * 100, 32, { align: 'left', w: 800, fill: C.navy }); check(260, -126 + i * 100, .9, C.ok, !ok); x.restore(); });
+        if (t > l2 + 4.5) T('Не отдадим ребёнка постороннему', 0, 255, 28, { w: 800, fill: C.bad, a: eo(p(t, l2 + 4.5, l2 + 5)) }); }, .5);
+      x.restore(); }
+  },
+  school(t, S) {
+    const [l0, l1, l2] = S.lines;
+    title([['🏫'], ['Школа', C.blue2]], t, l0, 90, 60);
+    const ph1 = eio(p(t, l1 - .4, l1 + .2)), ph2 = eio(p(t, l2 - .4, l2 + .2));
+    if (ph1 < 1) { x.save(); x.globalAlpha *= 1 - ph1;
+      pop(t, l0 + .4, 620, 500, () => { feed('gate', 0, 0, 900, 506, t, { t0: 30, hh: 7, mm: 55 });
+        const sc = eo(p(t, l0 + 1.6, l0 + 2.4)); x.save(); x.translate(300, 120 - 40 * sc); shadowCard(0, 0, 220, 140, 18); x.fillStyle = C.blue2; rr(-110, -70, 220, 44, [18, 18, 0, 0]); x.fill(); T('ID-карта', 0, -47, 22, { w: 800, fill: '#fff' }); T('Азиз · 7-А', 0, 10, 24, { w: 800, fill: C.navy }); T('▮▮▯▮▯▮▮', 0, 44, 18, { w: 800, fill: C.dim }); x.restore();
+        if (t > l0 + 2.4) T('✓ 07:56 вход', 300, 220, 30, { w: 900, fill: C.ok, glow: '#fff' }); });
+      bell(1460, 430, 'Школа · сейчас', 'Азиз пришёл на занятия ✅', eo(p(t, l0 + 2.8, l0 + 3.3)), C.ok, 640);
+      bell(1460, 580, 'Классный руководитель', 'Отсутствуют без причины: 1', eo(p(t, l0 + 4.4, l0 + 4.9)), C.warn, 640);
+      x.restore(); }
+    if (ph1 > 0 && ph2 < 1) { x.save(); x.globalAlpha *= ph1 * (1 - ph2);
+      const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт'], subj = ['Математика', 'Родной язык', 'История', 'Физика', 'Английский'];
+      pop(t, l1 - .1, 700, 520, () => { shadowCard(0, 0, 1100, 620, 30); T('Расписание 7-А', -510, -270, 32, { align: 'left', w: 900, fill: C.navy });
+        days.forEach((d, i) => T(d, -340 + i * 190, -200, 28, { w: 900, fill: C.dim }));
+        for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) { const hot = r === 1 && c === 2, fix = hot && t > l1 + 3.2, X = -430 + c * 190, Y = -160 + r * 105;
+          x.fillStyle = hot ? (fix ? '#D1FAE5' : '#FEE2E2') : '#F1F5F9'; rr(X, Y, 175, 88, 14); x.fill(); T(subj[(r * 2 + c) % 5], X + 88, Y + 32, 20, { w: 800, fill: C.navy });
+          T(hot ? (fix ? 'Юсупова ✓' : 'Каримова 🤒') : ['Азимова', 'Рахимов', 'Ким', 'Назарова'][(r + c) % 4], X + 88, Y + 62, 18, { w: 600, fill: hot ? (fix ? '#047857' : C.bad) : C.dim }); }
+        });
+      if (t > l1 + 1.2 && t < l1 + 3.2) { const q = p(t, l1 + 1.2, l1 + 3.2); T('🔄 Подбор замены…', 700, 870, 34, { w: 900, fill: C.blue2 }); x.fillStyle = '#E2E8F0'; rr(500, 900, 400, 10, 5); x.fill(); x.fillStyle = C.blue2; rr(500, 900, 400 * q, 10, 5); x.fill(); }
+      [['👩‍🏫', 'Учителю замены'], ['🧑‍🎓', 'Ученикам 7-А'], ['👨‍👩‍👧', 'Родителям']].forEach(([ic, s], i) => pop(t, l1 + 4 + i * .6, 1580, 330 + i * 170, () => { shadowCard(0, 0, 440, 130, 30); icon(ic, -160, 0, 60); T(s, -110, -14, 28, { align: 'left', w: 800, fill: C.navy }); T('✓ уведомлён', -110, 26, 22, { align: 'left', w: 700, fill: C.ok }); }));
+      x.restore(); }
+    if (ph2 > 0) { x.save(); x.globalAlpha *= ph2;
+      pop(t, l2, 700, 520, () => { shadowCard(0, 0, 1000, 560, 30); T('💳 Оплаты · октябрь', -460, -230, 34, { align: 'left', w: 900, fill: C.navy });
+        [['Детский сад · Мадина', '850 000', 1], ['Питание · Азиз', '320 000', 1], ['Кружок робототехники · Азиз', '150 000', 0], ['Английский · Лола', '200 000', 1]].forEach(([n, v, ok], i) => { const a = eo(p(t, l2 + .5 + i * .5, l2 + .9 + i * .5)); if (a <= 0) return;
+          x.save(); x.globalAlpha *= a; x.fillStyle = ok ? '#F8FAFC' : '#FEF2F2'; rr(-460, -170 + i * 100, 920, 84, 18); x.fill(); T(n, -430, -128 + i * 100, 28, { align: 'left', w: 800, fill: C.navy }); T(v + ' сум', 250, -128 + i * 100, 28, { align: 'right', w: 900, fill: ok ? C.navy : C.bad }); T(ok ? '✓ оплачено' : 'долг', 430, -128 + i * 100, 24, { align: 'right', w: 800, fill: ok ? C.ok : C.bad }); x.restore(); });
+        if (t > l2 + 3.5) { const a = eo(p(t, l2 + 3.5, l2 + 4)); x.save(); x.globalAlpha *= a; x.fillStyle = C.blue2; rr(-200, 220, 400, 70, 35); x.fill(); T('📨 Напоминание отправлено', 0, 256, 26, { w: 800, fill: '#fff' }); x.restore(); } });
+      pop(t, l2 + 5.5, 1580, 520, () => { shadowCard(0, 0, 380, 380, 40); fileIcon('journal', 0, -30, 1.6); const c = eo(p(t, l2 + 6, l2 + 6.6)); x.strokeStyle = C.bad; x.lineWidth = 12; x.lineCap = 'round'; x.beginPath(); x.moveTo(-120, -150); x.lineTo(-120 + 240 * c, -150 + 240 * c); x.stroke(); T('Без тетрадей', 0, 150, 34, { w: 900, fill: C.navy }); });
+      x.restore(); }
+  },
+  camIntro(t, S) {
+    const [l0, l1] = S.lines;
+    const z = eb(p(t, l0, l0 + .5)); x.save(); x.translate(960, 150); x.scale(z, z); T('🎥', -500, 0, 80, { w: 400 }); T('Умное видеонаблюдение', 60, 0, 72, { w: 900, fill: grad(-400, 0, 500, 0, C.blue2, C.violet) }); x.restore();
+    const names = ['yard', 'hall', 'class', 'gate', 'kids', 'night'], scan = p(t, l1 + 4.5, l1 + 6.5);
+    names.forEach((n, i) => { const k = eb(p(t, l0 + .8 + i * .15, l0 + 1.3 + i * .15)); if (k <= 0) return; const X = 360 + (i % 3) * 600, Y = 410 + Math.floor(i / 3) * 330;
+      const smart = scan * 1920 > X - 280; x.save(); x.translate(X, Y); x.scale(k, k);
+      feed(n, 0, 0, 560, 300, t, { t0: i * 300, hh: n === 'night' ? 23 : 10, border: smart ? C.ok : null, tag: smart ? ['✨ ИИ анализирует', C.ok] : null }); x.restore(); });
+    if (scan > 0 && scan < 1) { const X = scan * 1920; const g = x.createLinearGradient(X - 200, 0, X, 0); g.addColorStop(0, '#10B98100'); g.addColorStop(1, '#10B98166'); x.fillStyle = g; x.fillRect(X - 200, 230, 200, 680); x.fillStyle = C.ok; x.fillRect(X - 3, 230, 6, 680); }
+    if (t > l1 && t < l1 + 4.6) pop(t, l1 + .2, 960, 570, () => { x.fillStyle = '#0B1020ee'; rr(-420, -90, 840, 180, 40); x.fill(); const hrs = Math.floor(144 * eo(p(t, l1 + .2, l1 + 2.5))); T(`${hrs} часа записей в день`, 0, -25, 48, { w: 900, fill: '#fff' }); T('просмотрено: 0%', 0, 45, 34, { w: 800, fill: '#FCA5A5' }); });
+  },
+  camChat(t, S) {
+    const [l0, l1] = S.lines, sw = eio(p(t, l1 - .3, l1 + .4));
+    title([['💬'], ['Чат'], ['с'], ['камерами', C.blue2]], t, l0, 90, 58);
+    if (sw < 1) { x.save(); x.globalAlpha *= 1 - sw;
+      pop(t, l0 + .3, 640, 520, () => feed('yard', 0, 0, 1060, 596, t, { t0: 200, hh: 10, mm: 41, border: t > l0 + 5.5 ? C.ok : null }), .5);
+      pop(t, l0 + .8, 1530, 520, () => { shadowCard(0, 0, 640, 700, 30); x.fillStyle = C.navy; rr(-320, -350, 640, 90, [30, 30, 0, 0]); x.fill(); T('🤖 Камеры · ИИ-помощник', -290, -305, 28, { align: 'left', w: 800, fill: '#fff' });
+        const typed = 'Что сейчас происходит во дворе?', n = Math.floor(typed.length * p(t, l0 + 2.5, l0 + 4.3));
+        if (n > 0) { const L = wrap(typed.slice(0, n), 28, 440, 600); x.fillStyle = '#DBEAFE'; rr(300 - 500, -230, 500, 30 + L.length * 38, 22); x.fill(); L.forEach((l, i) => T(l, -180, -205 + i * 38, 28, { align: 'left', w: 600, fill: C.navy })); }
+        if (t > l0 + 4.6 && t < l0 + 5.4) for (let k = 0; k < 3; k++) { x.fillStyle = '#94A3B8'; x.beginPath(); x.arc(-260 + k * 24, -80 + Math.sin(t * 10 + k) * 5, 7, 0, 7); x.fill(); }
+        if (t > l0 + 5.4) { const a = eo(p(t, l0 + 5.4, l0 + 5.8)); x.save(); x.globalAlpha *= a; const L = wrap('Во дворе гуляет группа детей с воспитателем. Всё спокойно ✅', 28, 500, 600); x.fillStyle = '#F1F5F9'; rr(-290, -110, 560, 30 + L.length * 38, 22); x.fill(); L.forEach((l, i) => T(l, -268, -85 + i * 38, 28, { align: 'left', w: 600, fill: C.navy }));
+          feed('yard', -10, 150, 540, 220, t, { bare: 1, r: 16 }); T('📸 скриншот 10:41', -270, 280, 22, { align: 'left', w: 700, fill: C.dim }); x.restore(); } }, .5);
+      x.restore(); }
+    if (sw > 0) { x.save(); x.globalAlpha *= sw;
+      [['yard', '👧 Дети на прогулке', C.ok], ['hall', '🚪 В коридоре пусто', C.blue2], ['gate', '🎒 У входа: ученики', C.violet]].forEach(([n, s, col], i) =>
+        pop(t, l1 + .2 + i * .8, 340 + i * 620, 500, () => { feed(n, 0, 0, 580, 400, t, { t0: i * 77, hh: 10, mm: 42 }); const a = eo(p(t, l1 + 1 + i * 1.6, l1 + 1.5 + i * 1.6)); if (a > 0) { x.save(); x.globalAlpha *= a; x.fillStyle = col; rr(-270, 240, 540, 80, 40); x.fill(); T(s, 0, 282, 32, { w: 900, fill: '#fff' }); x.restore(); } }, .45));
+      x.restore(); }
+  },
+  camAlert(t, S) {
+    const [l0, l1] = S.lines, sw = eio(p(t, l1 - .3, l1 + .4));
+    if (sw < 1) { x.save(); x.globalAlpha *= 1 - sw; title([['⚠'], ['Группа'], ['без'], ['взрослого?', C.bad]], t, l0, 90, 58);
+      const pulse = .5 + .5 * Math.sin(t * 8);
+      pop(t, l0 + .3, 650, 520, () => feed('kids', 0, 0, 1060, 596, t, { t0: 50, hh: 15, mm: 12, border: t > l0 + 2 ? `rgba(239,68,68,${.4 + .6 * pulse})` : null, tag: t > l0 + 2 ? ['⚠ В кадре нет взрослого · 3 мин', C.bad] : null }), .5);
+      bell(1540, 430, 'Заведующей · 15:12', '⚠ «Солнышко»: нет взрослого', eo(p(t, l0 + 3, l0 + 3.5)), C.bad, 640);
+      bell(1540, 580, 'Воспитатель', 'Уже иду в группу 👍', eo(p(t, l0 + 4.8, l0 + 5.3)), C.ok, 640);
+      x.restore(); }
+    if (sw > 0) { x.save(); x.globalAlpha *= sw; title([['🌙'], ['Ночью'], ['здание'], ['под', C.blue2], ['охраной', C.blue2]], t, l1, 90, 58);
+      pop(t, l1 + .2, 650, 520, () => { feed('night', 0, 0, 1060, 596, t, { t0: 40, hh: 23, mm: 47 });
+        if (t > l1 + 1.4) { const q = .5 + .5 * Math.sin(t * 9), bx = 60 + Math.sin(t * .8) * 10; x.strokeStyle = C.bad; x.lineWidth = 6; x.strokeRect(bx - 110, -70, 230, 330); x.fillStyle = C.bad; rr(bx - 110, -116, 230, 46, 8); x.fill(); T('ДВИЖЕНИЕ', bx + 5, -92, 26, { w: 900, fill: '#fff' }); x.fillStyle = `rgba(239,68,68,${.12 * q})`; x.fillRect(-530, -298, 1060, 596); } }, .5);
+      const fly = eio(p(t, l1 + 2.2, l1 + 3)); if (fly > 0 && fly < 1) feed('night', 650 + (1500 - 650) * fly, 520 - 40 * fly, 300 * (1.2 - fly * .6), 170 * (1.2 - fly * .6), t, { bare: 1 });
+      pop(t, l1 + 2.9, 1500, 500, () => { shadowCard(0, 0, 620, 380, 30); x.fillStyle = C.bad; rr(-310, -190, 620, 80, [30, 30, 0, 0]); x.fill(); T('🚨 Тревога · 23:47', 0, -148, 32, { w: 900, fill: '#fff' }); feed('night', 0, 30, 560, 190, t, { bare: 1, r: 14 }); T('Охрана и директор оповещены', 0, 156, 26, { w: 800, fill: C.navy }); }, .5);
+      x.restore(); }
+  },
+  camClip(t, S) {
+    const [l0, l1] = S.lines, sw = eio(p(t, l1 - .3, l1 + .4));
+    title([['✂'], ['Нужный'], ['момент'], ['за'], ['минуту', C.ok]], t, l0, 90, 58);
+    // таймлайн суток
+    const TL = (Y, hl) => { x.fillStyle = '#E2E8F0'; rr(160, Y, 1600, 26, 13); x.fill(); for (let h = 8; h <= 18; h++) { const X = 160 + (h - 8) / 10 * 1600; x.fillStyle = '#94A3B8'; x.fillRect(X - 1, Y + 32, 2, 14); T(h + ':00', X, Y + 66, 22, { w: 700, fill: C.dim }); } if (hl) { x.fillStyle = C.ok; rr(160 + 3 / 10 * 1600, Y - 6, 160 * hl, 38, 12); x.fill(); } };
+    if (sw < 1) { x.save(); x.globalAlpha *= 1 - sw;
+      pop(t, l0 + .3, 960, 430, () => feed('yard', 0, 0, 900, 440, t * 10, { t0: t * 600, hh: 9 }), .5);
+      const head = 160 + ((t * .5) % 1) * 1600; TL(740); x.fillStyle = C.bad; x.fillRect(head - 3, 720, 6, 70);
+      pop(t, l0 + 1.5, 960, 430, () => { x.fillStyle = '#0B1020ee'; rr(-320, -56, 640, 112, 56); x.fill(); T('⏪ перемотка… 6 часов', 0, 3, 40, { w: 900, fill: '#fff' }); const c = eo(p(t, l0 + 3.5, l0 + 4.1)); x.strokeStyle = C.bad; x.lineWidth = 10; x.beginPath(); x.moveTo(-300, 0); x.lineTo(-300 + 600 * c, 0); x.stroke(); });
+      x.restore(); }
+    if (sw > 0) { x.save(); x.globalAlpha *= sw;
+      const cmd = 'Покажи прогулку 2-й группы с 11:00 до 12:00', n = Math.floor(cmd.length * p(t, l1 + .4, l1 + 2.6));
+      pop(t, l1 + .2, 960, 250, () => { shadowCard(0, 0, 1100, 100, 50); T('💬 ' + cmd.slice(0, n) + (t % 1 < .5 && n < cmd.length ? '|' : ''), -510, 3, 34, { align: 'left', w: 700, fill: C.navy }); });
+      if (t > l1 + 2.8) { const hl = eo(p(t, l1 + 2.8, l1 + 3.6)); TL(400, hl); T('11:00 — 12:00', 160 + 3.5 / 10 * 1600, 360, 26, { w: 900, fill: C.ok, a: hl }); }
+      pop(t, l1 + 3.8, 960, 700, () => { feed('yard', -200, 0, 560, 300, t, { t0: 120, hh: 11, mm: 37 }); x.fillStyle = '#ffffffdd'; x.beginPath(); x.arc(-200, 0, 46, 0, 7); x.fill(); x.fillStyle = C.blue2; x.beginPath(); x.moveTo(-216, -24); x.lineTo(-216, 24); x.lineTo(-176, 0); x.closePath(); x.fill();
+        shadowCard(330, 0, 420, 230, 30); T('✂ Видео готово', 330, -60, 36, { w: 900, fill: C.ok }); T('11:00 – 12:00 · группа 2', 330, 0, 26, { w: 700, fill: C.navy }); T('⬇ скачать · отправить', 330, 56, 24, { w: 700, fill: C.blue2 }); }, .5);
+      x.restore(); }
+  },
+  dash(t, S) {
+    const [l0, l1, l2] = S.lines;
+    title([['Панель'], ['руководителя', C.blue2]], t, l0, 90, 60);
+    pop(t, l0 + .3, 960, 530, () => { shadowCard(0, 0, 1640, 760, 30); x.fillStyle = C.navy; rr(-820, -380, 1640, 70, [30, 30, 0, 0]); x.fill(); T('📊 Школа №12 · детский сад «Ласточка» · сегодня', -790, -345, 26, { align: 'left', w: 800, fill: '#fff' });
+      T('● онлайн', 790, -345, 24, { align: 'right', w: 800, fill: '#4ADE80' });
+      [['Посещаемость', '96%', C.ok], ['Оплаты', '87%', C.blue2], ['Новые заявки', '24', C.violet], ['События с камер', '3', C.warn]].forEach(([n, v, col], i) => pop(t, l1 + .2 + i * .8, -600 + i * 400, -220, () => { x.fillStyle = '#F8FAFC'; rr(-180, -80, 360, 160, 22); x.fill(); x.fillStyle = col; rr(-180, -80, 10, 160, 5); x.fill(); T(v, -140, -18, 64, { align: 'left', w: 900, fill: col }); T(n, -140, 46, 26, { align: 'left', w: 700, fill: C.navy }); }));
+      T('Посещаемость за неделю', -780, -60, 26, { align: 'left', w: 800, fill: C.navy });
+      ['Пн', 'Вт', 'Ср', 'Чт', 'Пт'].forEach((d, i) => { const v = [.92, .95, .9, .97, .96][i], q = eo(p(t, l1 + 1 + i * .15, l1 + 2 + i * .15)); x.fillStyle = '#E2E8F0'; rr(-760 + i * 150, 0, 90, 260, 12); x.fill(); x.fillStyle = grad(0, 260, 0, 0, C.blue2, C.cyan); rr(-760 + i * 150, 260 - 260 * v * q, 90, 260 * v * q, 12); x.fill(); T(d, -715 + i * 150, 300, 24, { w: 700, fill: C.dim }); });
+      T('Последние события', 20, -60, 26, { align: 'left', w: 800, fill: C.navy });
+      [['🎥', 'Двор: дети на прогулке', '10:41', C.ok], ['💳', 'Оплата: питание, 7-А', '10:52', C.blue2], ['📝', 'Заявка в 1 класс', '11:05', C.violet], ['🔄', 'Замена: Юсупова', '11:20', C.warn]].forEach(([ic, s, tm, col], i) => { const a = eo(p(t, l1 + 2 + i * .6, l1 + 2.4 + i * .6)); if (a <= 0) return;
+        x.save(); x.globalAlpha *= a; x.fillStyle = '#F8FAFC'; rr(20, -20 + i * 82, 760, 70, 16); x.fill(); icon(ic, 60, 15 + i * 82, 34); T(s, 100, 15 + i * 82, 26, { align: 'left', w: 700, fill: C.navy }); T(tm, 760, 15 + i * 82, 22, { align: 'right', w: 700, fill: col }); x.restore(); });
+    }, .5);
+    if (t > l2) { const bx = 1400, by = 945, c = p(t, l2 + 1.2, l2 + 1.6);
+      pop(t, l2 + .2, bx, by, () => { x.fillStyle = grad(-300, 0, 300, 0, C.blue2, C.violet); x.shadowColor = C.blue2; x.shadowBlur = 30; rr(-300, -45, 600, 90, 45); x.fill(); x.shadowBlur = 0; T('⬇ Отчёт для управления образования', 0, 3, 26, { w: 900, fill: '#fff' }); });
+      cursorAt(bx + 140 + 200 * (1 - eo(p(t, l2 + .3, l2 + 1.1))), by + 10 + 100 * (1 - eo(p(t, l2 + .3, l2 + 1.1))), c);
+      [['pdf', 1780], ['xls', 1880]].forEach(([k, X], i) => { const q = eb(p(t, l2 + 1.7 + i * .2, l2 + 2.2 + i * .2)); if (q > 0) fileIcon(k, X, 935 - 20 * q, .65 * q); }); }
+  },
+  final(t, S) {
+    const [l0, l1, l2] = S.lines;
+    const a01 = 1 - eio(p(t, l2 - .4, l2 + .2));
+    if (a01 > 0) { x.save(); x.globalAlpha *= a01;
+      const kinds = ['journal', 'xls', 'doc', 'chat', 'folder', 'pdf'];
+      for (let i = 0; i < 14; i++) { const q = p(t, l0 + .2 + i * .08, l0 + 1.8 + i * .08); if (q >= 1) continue; fileIcon(kinds[i % 6], 160 + (i % 7) * 265, 250 + Math.floor(i / 7) * 160 + q * q * 900, .8, q * 3 * (i % 2 ? 1 : -1), 1 - q); }
+      kinetic([['Меньше'], ['бумаг'], ['и'], ['звонков.']], 960, 300, 70, l0 + .1, .2, t);
+      kinetic([['Больше'], ['времени'], ['на'], ['детей', C.ok], ['❤']], 960, 410, 78, l0 + 2.3, .2, t);
+      [['😊', 'Родители', 'спокойны', C.ok], ['🙌', 'Учителя', 'без рутины', C.blue2], ['👁', 'Руководитель', 'видит всё', C.violet]].forEach(([ic, n, d, col], i) => pop(t, l1 + .2 + i * 1.5, 420 + i * 540, 700, () => { shadowCard(0, 0, 460, 260, 34); x.fillStyle = col; rr(-230, -130, 460, 12, [34, 34, 0, 0]); x.fill(); icon(ic, 0, -50, 76); T(n, 0, 30, 38, { w: 900, fill: C.navy }); T(d, 0, 80, 30, { w: 800, fill: col }); }));
+      x.restore(); }
+    if (t > l2 - .3) {
+      pop(t, l2, 960, 430, () => { const pl = 1 + .015 * Math.sin(t * 3); x.scale(pl, pl); x.shadowColor = C.cyan; x.shadowBlur = 90; x.fillStyle = grad(-640, -200, 640, 200, C.blue2, C.violet); rr(-640, -200, 1280, 400, 70); x.fill(); x.shadowBlur = 0;
+        icon('🏫', -470, -40, 120); icon('🧸', 470, -40, 120); T('Умная школа', 0, -90, 80, { w: 900, fill: '#fff' }); T('Умный детский сад', 0, 10, 64, { w: 900, fill: '#E0E7FF' }); }, .5);
+      pop(t, l2 + 2.6, 960, 760, () => { x.fillStyle = C.ok; x.shadowColor = C.ok; x.shadowBlur = 30; rr(-380, -56, 760, 112, 56); x.fill(); x.shadowBlur = 0; T('🚀 Внедрение — уже сегодня', 0, 3, 42, { w: 900, fill: '#fff' }); });
+      for (let i = 0; i < 40; i++) { const q = p(t, l2 + .3 + rnd(i) * .5, l2 + 2.5 + rnd(i) * .5); if (q <= 0 || q >= 1) continue; x.fillStyle = [C.ok, C.cyan, C.warn, C.violet, '#F472B6'][i % 5]; x.save(); x.translate(960 + (rnd(i * 2) - .5) * 1800 * eo(q), 430 + (rnd(i * 3) - .6) * 900 * eo(q) + q * q * 300); x.rotate(q * 10 + i); x.globalAlpha *= 1 - q; x.fillRect(-8, -4, 16, 8); x.restore(); }
+    }
+  },
+};
+function captions(t) {
+  const ph = PH.find(s => t >= s[0] - .05 && t <= s[1] + .25); if (!ph) return;
+  const [s0, s1, text] = ph, words = text.split(' '), total = words.reduce((n, w) => n + w.length + 1, 0);
+  let acc = 0, cur = words.length - 1; for (let k = 0; k < words.length; k++) { acc += words[k].length + 1; if (t < s0 + (s1 - s0) * acc / total) { cur = k; break; } }
+  x.save(); x.font = `700 34px ${F}`; const lines = []; let line = [];
+  for (const w of words) { if (x.measureText([...line, w].join(' ')).width > 1500 && line.length) { lines.push(line); line = []; } line.push(w); } lines.push(line);
+  const show = lines.slice(-2), Y0 = 1040 - (show.length - 1) * 44; let idx = words.length - show.flat().length;
+  x.fillStyle = '#0B1F4Dcc'; const bw = Math.max(...show.map(l => x.measureText(l.join(' ')).width)) + 60; rr(CX - bw / 2, Y0 - 30, bw, show.length * 44 + 16, 18); x.fill();
+  show.forEach((L, li) => { let cx = CX - x.measureText(L.join(' ')).width / 2; L.forEach(w => { x.textBaseline = 'middle'; x.fillStyle = idx === cur ? '#FDE047' : '#fff'; x.fillText(w, cx, Y0 + li * 44); cx += x.measureText(w + ' ').width; idx++; }); });
+  x.restore();
+}
+function draw(t) {
+  background(t);
+  const H0 = SC.hook; if (t < H0.end + .5) { x.fillStyle = `rgba(7,11,24,${1 - eio(p(t, H0.lines[4] + 2.2, H0.lines[4] + 4))})`; x.fillRect(0, 0, W, H); }
+  for (const id of ORDER) { const S = SC[id]; const k = Math.min(clamp((t - S.start + .02) / .3), clamp((S.end + .02 - t) / .3)); if (k <= 0) continue; x.save(); x.globalAlpha = k; SCN[id](t, S); x.restore(); }
+  // переход: цветная полоса проходит по экрану на стыке сцен
+  for (const id of ORDER.slice(1)) { const q = p(t, SC[id].start - .4, SC[id].start + .4); if (q <= 0 || q >= 1) continue;
+    const X = -600 + eio(q) * 3200; x.save(); x.fillStyle = grad(X - 500, 0, X + 500, 0, C.blue2, C.violet); x.globalAlpha = .9; x.beginPath(); x.moveTo(X - 500, 0); x.lineTo(X + 300, 0); x.lineTo(X - 100, H); x.lineTo(X - 900, H); x.closePath(); x.fill();
+    x.fillStyle = C.cyan; x.beginPath(); x.moveTo(X + 320, 0); x.lineTo(X + 380, 0); x.lineTo(X - 20, H); x.lineTo(X - 80, H); x.closePath(); x.fill(); x.restore(); }
+  captions(t);
+  o.drawImage(buf, 0, 0);
+}
+window.setup = async d => { PH = d.phrases; d.scenes.forEach(s => { SC[s.id] = s; ORDER.push(s.id); }); DUR = d.duration;
+  await Promise.all(Object.entries(d.cams).map(([k, list]) => Promise.all(list.map(src => new Promise(r => { const im = new Image(); im.onload = r; im.src = src; (CAM[k] = CAM[k] || []).push(im); })))));
+  return DUR; };
+window.draw = draw;
+document.fonts.load(`800 40px Inter`).then(() => { window.ready = true; });
+</script></body></html>
