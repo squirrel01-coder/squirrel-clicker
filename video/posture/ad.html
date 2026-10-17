@@ -1,0 +1,164 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#EEF2F7}canvas{display:block}#gl{position:absolute;left:-5000px}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js"}}</script>
+<script src="poses.js"></script></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script type="module">
+// «Ровная спина» 3D: аниме-боец (заливка тонами + контур) показывает упражнения. Позы — poses.js (2D-углы), здесь перевод в 3D.
+import * as THREE from 'three'; import { GLTFLoader } from './node_modules/three/examples/jsm/loaders/GLTFLoader.js';
+const W = 1920, H = 1080, SW = 1180, CXP = 560, F2 = 'Inter, sans-serif'; let S = 0.0037;
+const out = document.getElementById('c'), x = out.getContext('2d');
+const R = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); R.setPixelRatio(1); R.setSize(SW, H); R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap; R.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#E6EEF8');
+const cam = new THREE.PerspectiveCamera(32, SW / H, .05, 50);
+scene.add(new THREE.HemisphereLight('#ffffff', '#c8b8a0', 1.6));
+const sun = new THREE.DirectionalLight('#ffffff', 2.4); sun.position.set(2.5, 5, 4); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3 }); sun.shadow.bias = -.0005; scene.add(sun); scene.add(sun.target);
+// тоновая заливка в 3 ступени
+const grad = new THREE.DataTexture(new Uint8Array([90, 90, 90, 255, 175, 175, 175, 255, 255, 255, 255, 255]), 3, 1); grad.minFilter = grad.magFilter = THREE.NearestFilter; grad.needsUpdate = true;
+const toon = c => new THREE.MeshToonMaterial({ color: c, gradientMap: grad });
+const M = { skin: toon('#EDB48C'), top: toon('#1F2026'), pants: toon('#3A4252'), hair: toon('#B8322B'), dark: new THREE.MeshBasicMaterial({ color: '#141414' }), white: new THREE.MeshBasicMaterial({ color: '#ffffff' }), band: toon('#E5E7EB') };
+const OUT = new THREE.MeshBasicMaterial({ color: '#111111', side: THREE.BackSide });
+const LW = .007; // толщина контура, м
+const sph = new THREE.SphereGeometry(1, 28, 18);
+// ---------- манекен (Xbot, скелет Mixamo) ----------
+const gltf = await new GLTFLoader().loadAsync('models/Xbot.glb'), model = gltf.scene; scene.add(model);
+model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+const BN = {}; model.traverse(o => { if (o.isBone) BN[o.name.replace('mixamorig', '')] = o; });
+model.updateMatrixWorld(true); const REST = {}; Object.entries(BN).forEach(([k, b]) => REST[k] = b.quaternion.clone());
+const HIPS_RW = BN.Hips.getWorldQuaternion(new THREE.Quaternion());
+S = BN.LeftUpLeg.getWorldPosition(new THREE.Vector3()).distanceTo(BN.LeftLeg.getWorldPosition(new THREE.Vector3())) / L.th;
+const parts = {}; const UP = new THREE.Vector3(0, 1, 0);
+function setCyl(g, A, B) { const d = new THREE.Vector3().subVectors(B, A), len = d.length(); g.position.copy(A).addScaledVector(d, .5); g.quaternion.setFromUnitVectors(UP, d.clone().normalize()); g.scale.set(1, Math.max(len, 1e-4), 1); g.visible = true; }
+const _q = new THREE.Quaternion(), _v = new THREE.Vector3();
+function setWorldQ(bone, qW) { bone.parent.getWorldQuaternion(_q); bone.quaternion.copy(_q.invert().multiply(qW)); bone.updateMatrixWorld(true); }
+const DIRL = {}; Object.entries(BN).forEach(([k, b]) => { const c = b.children.find(c => c.isBone && !/Thumb|Index|Ring|Pinky|Eye/.test(c.name)) || b.children.find(c => c.isBone); if (c) DIRL[k] = c.position.clone().normalize(); });
+function aim(name, dir) { const b = BN[name]; b.quaternion.copy(REST[name]); b.updateMatrixWorld(true); const restW = b.getWorldQuaternion(new THREE.Quaternion()), y0 = DIRL[name].clone().applyQuaternion(restW);
+  const dq = new THREE.Quaternion().setFromUnitVectors(y0, dir.clone().normalize()); setWorldQ(b, dq.multiply(restW)); }
+// ---------- окружение ----------
+const room = new THREE.Group(); scene.add(room);
+const floorM = toon('#D9C3A1'), wallM = toon('#DCE6F2');
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), floorM); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; room.add(floor);
+const back = new THREE.Mesh(new THREE.PlaneGeometry(30, 8), wallM); back.position.set(0, 4, -2.2); back.receiveShadow = true; room.add(back);
+const winM = toon('#BFDBFE'), frameM = toon('#FFFFFF'); const win = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.2, .04), winM); win.position.set(1.7, 1.9, -2.17); room.add(win); const wf = new THREE.Mesh(new THREE.BoxGeometry(1.22, 1.32, .02), frameM); wf.position.set(1.7, 1.9, -2.19); room.add(wf);
+const plant = new THREE.Mesh(new THREE.SphereGeometry(.22, 20, 14), toon('#22C55E')); plant.scale.set(1, 1.6, 1); plant.position.set(-1.9, .45, -1.6); room.add(plant); const pot = new THREE.Mesh(new THREE.CylinderGeometry(.16, .13, .25, 20), toon('#B45309')); pot.position.set(-1.9, .12, -1.6); room.add(pot);
+const props = {}; function prop(name, geo, mat, pos, rot) { const m = new THREE.Mesh(geo, mat); m.position.copy(pos); if (rot) m.rotation.set(...rot); m.castShadow = true; m.receiveShadow = true; scene.add(m); props[name] = m; m.visible = false; return m; }
+const to3 = (p, z = 0) => new THREE.Vector3((p.x - CXP) * S, (FL - p.y) * S, z);
+prop('mat', new THREE.BoxGeometry(2.7, .02, .8), toon('#7DD3FC'), new THREE.Vector3(0, .01, 0));
+prop('wallChin', new THREE.BoxGeometry(.9, 2.6, 1.6), wallM, new THREE.Vector3((386 - CXP) * S - .0, 1.3, 0)); props.wallChin.position.x = (512 - CXP) * S - .45;
+prop('wallAngel', new THREE.BoxGeometry(2, 2.6, .3), wallM, new THREE.Vector3(0, 1.3, -.32));
+const wood = toon('#A16207'); prop('doorA', new THREE.BoxGeometry(.1, 2.3, .1), wood, new THREE.Vector3((487 - CXP) * S, 1.15, .24)); prop('doorB', new THREE.BoxGeometry(.1, 2.3, .1), wood, new THREE.Vector3((487 - CXP) * S, 1.15, -.24)); prop('doorTop', new THREE.BoxGeometry(.1, .1, .58), wood, new THREE.Vector3((487 - CXP) * S, 2.3, 0));
+prop('roll', new THREE.CylinderGeometry(.07, .07, .55, 24), toon('#FB923C'), new THREE.Vector3((492 - CXP) * S, .075, 0), [Math.PI / 2, 0, 0]);
+const metal = toon('#64748B'); prop('bar', new THREE.CylinderGeometry(.02, .02, 1.7, 16), metal, to3({ x: 560, y: 176 }), [0, 0, Math.PI / 2]); prop('barPA', new THREE.BoxGeometry(.06, .5, .06), metal, to3({ x: 330, y: 176 + 60 })); prop('barPB', new THREE.BoxGeometry(.06, .5, .06), metal, to3({ x: 790, y: 176 + 60 }));
+prop('towel', new THREE.CylinderGeometry(.025, .025, 1, 12), toon('#FB923C'), new THREE.Vector3());
+// стул, стол, ноутбук/монитор
+const seatY = (FL - (FL - 12 - L.sh - 2 + 30)) * S; prop('seat', new THREE.BoxGeometry(.48, .05, .46), wood, new THREE.Vector3((462 - CXP) * S, seatY - .025, 0)); prop('chairBack', new THREE.BoxGeometry(.05, .55, .46), wood, new THREE.Vector3((462 - CXP) * S - .24, seatY + .28, 0));
+['l1', 'l2', 'l3', 'l4'].forEach((n, i) => prop('cleg' + n, new THREE.BoxGeometry(.04, seatY - .05, .04), wood, new THREE.Vector3((462 - CXP) * S + (i % 2 ? .2 : -.2), (seatY - .05) / 2, i < 2 ? .2 : -.2)));
+const deskY = (290) * S; prop('desk', new THREE.BoxGeometry(1.3, .05, .75), toon('#C08A4A'), new THREE.Vector3((830 - CXP) * S, deskY, 0)); ['d1', 'd2', 'd3', 'd4'].forEach((n, i) => prop(n, new THREE.BoxGeometry(.05, deskY, .05), toon('#C08A4A'), new THREE.Vector3((830 - CXP) * S + (i % 2 ? .6 : -.6), deskY / 2, i < 2 ? .33 : -.33)));
+const dk = toon('#334155'); prop('lapBase', new THREE.BoxGeometry(.32, .02, .24), dk, new THREE.Vector3((800 - CXP) * S, deskY + .035, 0)); prop('lapScr', new THREE.BoxGeometry(.02, .22, .32), dk, new THREE.Vector3((800 - CXP) * S + .17, deskY + .14, 0), [0, 0, .35]);
+prop('mon', new THREE.BoxGeometry(.04, .36, .58), dk, new THREE.Vector3((930 - CXP) * S, deskY + .5, 0)); prop('monScr', new THREE.BoxGeometry(.01, .32, .54), toon('#60A5FA'), new THREE.Vector3((930 - CXP) * S - .025, deskY + .5, 0)); prop('monStand', new THREE.BoxGeometry(.06, .3, .06), dk, new THREE.Vector3((930 - CXP) * S, deskY + .17, 0));
+const SCENEPROPS = { chin: ['wallChin'], angel: ['wallAngel'], door: ['doorA', 'doorB', 'doorTop'], towelroll: ['mat', 'roll'], catcow: ['mat'], yw: ['mat'], scap: ['mat'], sideplank: ['mat'], birddog: ['mat'], deadbug: ['mat'], bridge: ['mat'], hang: ['bar', 'barPA', 'barPB'], pullapart: ['towel'],
+  intro: ['seat', 'chairBack', 'clegl1', 'clegl2', 'clegl3', 'clegl4', 'desk', 'd1', 'd2', 'd3', 'd4', 'lapBase', 'lapScr', 'mon', 'monScr', 'monStand'], habits: ['seat', 'chairBack', 'clegl1', 'clegl2', 'clegl3', 'clegl4', 'desk', 'd1', 'd2', 'd3', 'd4', 'mon', 'monScr', 'monStand'] };
+// ---------- поза → скелет ----------
+const v2 = (a, sc = 1, z = 0) => { const d = dd(a); return new THREE.Vector3(d.x * sc, -d.y * sc, z); };
+function pose3(p) {
+  const A = anchors(p), side = p.view !== 'front';
+  const P3 = to3(p.P), N3 = to3(A.N), up = new THREE.Vector3().subVectors(N3, P3).normalize();
+  const fwd = side ? new THREE.Vector3(up.y, -up.x, 0) : new THREE.Vector3(0, 0, 1), left = new THREE.Vector3().crossVectors(up, fwd).normalize(), f2 = new THREE.Vector3().crossVectors(left, up).normalize();
+  const hb = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(left, up, f2));
+  Object.entries(REST).forEach(([k, q]) => BN[k].quaternion.copy(q));
+  BN.Hips.position.copy(BN.Hips.parent.worldToLocal(P3.clone())); setWorldQ(BN.Hips, hb.multiply(HIPS_RW));
+  const cv = p.curve ? new THREE.Vector3(p.curve[0] * S, -p.curve[1] * S, 0) : new THREE.Vector3(), tl = P3.distanceTo(N3);
+  const c1 = P3.clone().addScaledVector(up, tl * .35).addScaledVector(cv, .8), c2 = P3.clone().addScaledVector(up, tl * .68).addScaledVector(cv, .8);
+  aim('Spine', c1.clone().sub(P3)); aim('Spine1', c2.clone().sub(c1)); aim('Spine2', N3.clone().sub(c2));
+  aim('Neck', v2(p.neck)); aim('Head', v2(p.neck));
+  const map = side ? { A: 'Right', B: 'Left' } : { A: 'Left', B: 'Right' };
+  ['A', 'B'].forEach(s => { const sd = map[s], [ua, fa, sc = 1, both = 0] = p['arm' + s];
+    const zf = sc < 1 ? Math.sqrt(1 - sc * sc) : 0, du = both ? v2(ua, sc, zf) : v2(ua), df = v2(fa, sc, zf);
+    aim(sd + 'Arm', du); aim(sd + 'ForeArm', df); aim(sd + 'Hand', df);
+    const [th, sh] = p['leg' + s]; aim(sd + 'UpLeg', v2(th)); aim(sd + 'Leg', v2(sh));
+    const fd = v2(sh + 90), sdn = v2(sh); aim(sd + 'Foot', fd.clone().addScaledVector(sdn, .35)); });
+  model.updateMatrixWorld(true);
+  if (p.ground) { const ty = Math.min(BN.LeftToeBase.getWorldPosition(new THREE.Vector3()).y, BN.RightToeBase.getWorldPosition(new THREE.Vector3()).y, BN.LeftFoot.getWorldPosition(new THREE.Vector3()).y - .06, BN.RightFoot.getWorldPosition(new THREE.Vector3()).y - .06);
+    const dy = p.ground - ty; const w = BN.Hips.getWorldPosition(new THREE.Vector3()); w.y += dy; BN.Hips.position.copy(BN.Hips.parent.worldToLocal(w)); model.updateMatrixWorld(true); }
+  return { P3 };
+}
+// ---------- сценарии ----------
+const SC = {}, ORDER = []; let PH = [], DUR = 360;
+const CAMS = { plank: [[.35, 1.25, 3.6], [-.05, .35, 0]], side: [[1.45, 1.3, 3.9], [.05, .92, 0]], low: [[1.0, 1.55, 3.3], [.1, .32, 0]], front: [[1.5, 1.3, 4.0], [0, .95, 0]], hang: [[1.5, 1.6, 4.6], [0, 1.25, 0]], sit: [[1.5, 1.5, 4.0], [.5, .8, 0]] };
+const CAMOF = { chin: 'side', angel: 'front', door: 'side', towelroll: 'low', sidebend: 'front', catcow: 'low', yw: 'low', pullapart: 'front', scap: 'low', sideplank: 'plank', birddog: 'low', deadbug: 'low', bridge: 'low', split: 'side', hang: 'hang', intro: 'sit', habits: 'sit', walk: 'side', outro: 'front' };
+const TAGS = {
+  chin: t => holdC(t, .8, 2.2, .8, .7) > .95 ? ['держим 5 секунд', '#16A34A'] : ['затылок назад и вверх', '#2563EB'],
+  angel: t => [osc(t, 3.4) > .5 ? 'руки вверх, локти у стены' : 'локти прижаты к стене', '#2563EB'], door: () => ['шаг вперёд до растяжения', '#2563EB'],
+  towelroll: () => ['валик под лопатками', '#D97706'], sidebend: () => ['тянем правый бок', '#2563EB'],
+  catcow: t => Math.cos(2 * Math.PI * t / 5) > 0 ? ['выдох — спина вверх', '#2563EB'] : ['вдох — прогиб', '#0D9488'],
+  yw: t => [(t % 8) < 4 ? 'руки вперёд и вверх' : 'локти к рёбрам', '#2563EB'], pullapart: () => ['сжимаем лопатки', '#2563EB'], scap: () => ['руки прямые, двигаются лопатки', '#2563EB'],
+  sideplank: () => ['тело — одна линия', '#2563EB'], birddog: () => ['спина ровная, как стол', '#2563EB'], deadbug: () => ['поясница прижата', '#2563EB'],
+  bridge: t => holdC(t, 1, .9, 1, .4) > .95 ? ['сжать ягодицы!', '#16A34A'] : ['толкаемся пятками', '#2563EB'], split: () => ['корпус прямо', '#2563EB'], hang: () => ['плечи от ушей', '#2563EB'] };
+const INFO = {
+  chin: ['Втягивание подбородка у стены', '10 × 5 сек', ['Затылок назад и вверх', 'Взгляд прямо', 'Держим 5 секунд']], angel: ['Ангел у стены', '2 × 10', ['Локти и кисти у стены', 'Поясница прижата', 'Медленно']],
+  door: ['Растяжка в дверном проёме', '2 × 30 сек', ['Локти на уровне плеч', 'Шаг до растяжения', 'Без боли']], towelroll: ['Разгибание на полотенце', '5 раз × 2–3 уровня', ['Валик под лопатками', 'Таз на полу', 'Мягко, без рывков']],
+  sidebend: ['Растяжка правого бока', '3 × 30 сек', ['Правая рука вверх', 'Наклон строго влево', 'Не заваливаться вперёд']], catcow: ['Кошка-корова', '10 раз', ['Выдох — спина вверх', 'Вдох — прогиб', 'Медленно, с дыханием']],
+  yw: ['Лёжа: руки вперёд и локти к рёбрам', '2 × 8', ['Поднимать руки, не голову', 'Сводить лопатки', 'Держать 2 секунды']], pullapart: ['Разведение полотенца', '3 × 15', ['Полотенце натянуто', 'Сжимаем лопатки', 'Плечи вниз']],
+  scap: ['Отжимания лопатками', '3 × 12', ['Руки всё время прямые', 'Тело как доска', 'Работают только лопатки']], sideplank: ['Боковая планка', 'Л 3 × 40 с · П 2 × 30 с', ['Локоть под плечом', 'Таз не проваливается', 'Левый бок — больше']],
+  birddog: ['Птица-собака', '3 × 10 на сторону', ['Рука + противоположная нога', 'Спина ровная', 'Таз не крутится']], deadbug: ['Мёртвый жук', '3 × 10', ['Поясница прижата', 'Противоположные рука и нога', 'Выдох при опускании']],
+  bridge: ['Ягодичный мостик', '3 × 15', ['Толкаемся пятками', 'Сжать ягодицы вверху', 'Не прогибать поясницу']], split: ['Сплит-присед', '3 × 10 на ногу', ['Корпус вертикально', 'Колено над стопой', 'Начинать с левой ноги']],
+  hang: ['Вис на турнике', '3 × 20–40 сек', ['Хват на ширине плеч', 'Плечи от ушей', 'Дышать спокойно']] };
+const MORNING = ['chin', 'angel', 'door', 'towelroll', 'sidebend', 'catcow'], STRENGTH = ['yw', 'pullapart', 'scap', 'sideplank', 'birddog', 'deadbug', 'bridge', 'split', 'hang'];
+function walkPose(t) { const w = 2 * Math.PI * t / 1.1, s = Math.sin(w), p = stand(560); p.P.y += Math.abs(s) * -6;
+  p.legA = [26 * s, 26 * s - Math.max(0, 40 * Math.sin(w + 1.2))]; p.legB = [-26 * s, -26 * s - Math.max(0, 40 * Math.sin(w + 1.2 + Math.PI))]; p.armA = [-22 * s, -22 * s + 18]; p.armB = [22 * s, 22 * s + 18]; return p; }
+function outroPose(t) { const p = stand(560, 'front'); p.armA = [130 + 15 * Math.sin(t * 5), 150 + 15 * Math.sin(t * 5)]; return p; }
+// ---------- 2D-оверлей ----------
+function rr(X, Y, w, h, r) { x.beginPath(); x.roundRect(X, Y, w, h, r); }
+function T(s, X, Y, size, op = {}) { x.save(); x.font = `${op.w || 800} ${size}px ${F2}`; x.textAlign = op.align || 'center'; x.textBaseline = 'middle'; x.globalAlpha *= op.a ?? 1; x.fillStyle = op.fill || '#0B1F4D'; x.fillText(s, X, Y); x.restore(); }
+function wrap(s, size, maxW, w = 800) { x.save(); x.font = `${w} ${size}px ${F2}`; const Ls = []; let line = ''; for (const word of s.split(' ')) { const tt = line ? line + ' ' + word : word; if (x.measureText(tt).width > maxW && line) { Ls.push(line); line = word; } else line = tt; } if (line) Ls.push(line); x.restore(); return Ls; }
+function tag(s, X, Y, col, a = 1) { if (a <= 0) return; x.save(); x.globalAlpha *= a; x.font = `800 34px ${F2}`; const w = x.measureText(s).width + 44; x.shadowColor = '#0005'; x.shadowBlur = 16; x.fillStyle = col; rr(X - w / 2, Y - 30, w, 60, 30); x.fill(); x.shadowBlur = 0; T(s, X, Y + 1, 34, { fill: '#fff' }); x.restore(); }
+function card(S, info, t) { const r = t - S.start, a = eo(p01(r, .1, .5)); x.save(); x.globalAlpha = a; x.translate((1 - a) * 60, 0);
+  x.shadowColor = '#0B1F4D22'; x.shadowBlur = 40; x.shadowOffsetY = 12; x.fillStyle = '#fff'; rr(1220, 80, 650, 860, 36); x.fill(); x.shadowBlur = 0; x.shadowOffsetY = 0;
+  x.fillStyle = info.col; rr(1260, 120, 210, 56, 28); x.fill(); T(info.badge, 1365, 149, 28, { fill: '#fff' });
+  const TL = wrap(info.title, 54, 570); TL.forEach((l, i) => T(l, 1260, 240 + i * 64, 54, { align: 'left', w: 900 })); const ty = 240 + TL.length * 64 + 20;
+  x.fillStyle = '#EFF6FF'; rr(1260, ty, 570, 80, 20); x.fill(); T('🔁 ' + info.reps, 1290, ty + 41, 36, { align: 'left', fill: '#2563EB' });
+  info.cues.forEach((c, i) => { const ca = eo(p01(r, 1.2 + i * .9, 1.6 + i * .9)); if (ca <= 0) return; x.save(); x.globalAlpha *= ca; const yy = ty + 140 + i * 118;
+    x.fillStyle = '#F0FDF4'; rr(1260, yy - 48, 570, 98, 22); x.fill(); x.fillStyle = '#16A34A'; x.beginPath(); x.arc(1304, yy + 2, 24, 0, 7); x.fill(); T('✓', 1304, yy + 3, 28, { fill: '#fff' });
+    wrap(c, 33, 460, 700).forEach((l, j, arr) => T(l, 1344, yy + 2 + (j - (arr.length - 1) / 2) * 38, 33, { align: 'left', w: 700 })); x.restore(); }); x.restore(); }
+function captions(t) { const ph = PH.find(s => t >= s[0] - .05 && t <= s[1] + .2); if (!ph) return; const [s0, s1, text] = ph, words = text.split(' '), tot = words.reduce((n, w) => n + w.length + 1, 0);
+  let acc = 0, cur = words.length - 1; for (let k = 0; k < words.length; k++) { acc += words[k].length + 1; if (t < s0 + (s1 - s0) * acc / tot) { cur = k; break; } }
+  x.save(); x.font = `700 33px ${F2}`; const lines = []; let line = []; for (const w of words) { if (x.measureText([...line, w].join(' ')).width > 1060 && line.length) { lines.push(line); line = []; } line.push(w); } lines.push(line);
+  let li0 = 0, idx = 0; for (let i = 0; i < lines.length; i++) { if (idx + lines[i].length > cur) { li0 = i; break; } idx += lines[i].length; } const show = lines.slice(li0, li0 + 2); idx = lines.slice(0, li0).flat().length;
+  const Y0 = 985, bw = Math.max(...show.map(l => x.measureText(l.join(' ')).width)) + 50; x.fillStyle = '#0B1F4Dd9'; rr(590 - bw / 2, Y0 - 30, bw, show.length * 44 + 16, 18); x.fill();
+  show.forEach((Ln, li) => { let cx = 590 - x.measureText(Ln.join(' ')).width / 2; Ln.forEach(w => { x.textBaseline = 'middle'; x.fillStyle = idx === cur ? '#FDE047' : '#fff'; x.fillText(w, cx, Y0 + li * 44); cx += x.measureText(w + ' ').width; idx++; }); }); x.restore(); }
+function titleScene(t, S, big, sub, col) { const r = t - S.start, g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, col); g.addColorStop(1, '#0B1F4D'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  const k = eb(p01(r, .1, .6)); x.save(); x.translate(960, 470); x.scale(k, k); T(big, 0, 0, 110, { fill: '#fff', w: 900 }); x.restore(); T(sub, 960, 600, 46, { fill: '#E0E7FF', w: 700, a: eo(p01(r, .5, 1)) }); }
+function render3(id, p, t) { Object.values(props).forEach(m => m.visible = false); (SCENEPROPS[id] || []).forEach(n => props[n].visible = true);
+  if (id === 'intro') { const k = sm(p01(t, SC.intro.end - SC.intro.start - 8, SC.intro.end - SC.intro.start - 5.5)); ['lapBase', 'lapScr'].forEach(n => props[n].visible = k < .5); ['mon', 'monScr', 'monStand'].forEach(n => props[n].visible = k >= .5); }
+  const r = pose3(p);
+  if (id === 'pullapart') { const a = BN.LeftHand.getWorldPosition(new THREE.Vector3()), b = BN.RightHand.getWorldPosition(new THREE.Vector3()); setCyl(props.towel, a, b); props.towel.visible = true; }
+  if (id === 'hang') { const hy = (BN.LeftHand.getWorldPosition(new THREE.Vector3()).y + BN.RightHand.getWorldPosition(new THREE.Vector3()).y) / 2 + .03; props.bar.position.y = hy; props.barPA.position.y = props.barPB.position.y = hy - .22; }
+  const [pos, tg] = CAMS[CAMOF[id] || 'side'], sway = Math.sin(t * .25) * .18; cam.position.set(pos[0] + sway, pos[1], pos[2]); cam.lookAt(tg[0], tg[1], tg[2]); R.render(scene, cam);
+  x.drawImage(R.domElement, 0, 0); return r; }
+function draw(t) {
+  x.fillStyle = '#F1F5F9'; x.fillRect(0, 0, W, H); const g = x.createLinearGradient(SW, 0, W, H); g.addColorStop(0, '#F1F5F9'); g.addColorStop(1, '#E2E8F0'); x.fillStyle = g; x.fillRect(SW, 0, W - SW, H);
+  let cur = ORDER[0]; for (const id of ORDER) if (t >= SC[id].start) cur = id; const Sx = SC[cur], r = t - Sx.start;
+  if (cur === 'blockA') titleScene(t, Sx, 'Часть 1', 'Утренняя зарядка · 12 минут · каждый день', '#F59E0B');
+  else if (cur === 'blockB') titleScene(t, Sx, 'Часть 2', 'Укрепление · 30 минут · 3 раза в неделю', '#2563EB');
+  else {
+    let p; if (EX[cur]) p = EX[cur].pose(r); else if (cur === 'walk') p = walkPose(r); else if (cur === 'outro') p = outroPose(r);
+    else { const k = cur === 'intro' ? sm(p01(r, Sx.end - Sx.start - 8, Sx.end - Sx.start - 5.5)) : 1; p = sitter(k, r); }
+    if (['chin', 'angel', 'door', 'sidebend', 'pullapart', 'split', 'walk', 'outro'].includes(cur)) p.ground = .025; if (cur === 'hang') p.ground = .14;
+    render3(cur, p, r);
+    if (EX[cur]) { const tg = TAGS[cur](r); tag(tg[0], 590, 90, tg[1]); const i = MORNING.indexOf(cur), j = STRENGTH.indexOf(cur), inf = INFO[cur];
+      card(Sx, { title: inf[0], reps: inf[1], cues: inf[2], badge: i >= 0 ? `Утро · ${i + 1}/6` : `Сила · ${j + 1}/9`, col: i >= 0 ? '#F59E0B' : '#2563EB' }, t); }
+    else if (cur === 'intro') { const k = sm(p01(r, Sx.end - Sx.start - 8, Sx.end - Sx.start - 5.5)); if (k < .5) { tag('голова вперёд', 420, 90, '#DC2626', 1 - 2 * k); tag('холка и сутулость', 760, 90, '#DC2626', 1 - 2 * k); } else tag('ровная спина ✓', 590, 90, '#16A34A', 2 * k - 1);
+      x.shadowColor = '#0B1F4D22'; x.shadowBlur = 40; x.fillStyle = '#fff'; rr(1220, 260, 650, 520, 36); x.fill(); x.shadowBlur = 0; T('Ровная спина', 1545, 400, 72, { w: 900 }); T('за 6–8 недель', 1545, 480, 52, { fill: '#2563EB' }); T('дома · без весов · 20 мин/день', 1545, 580, 34, { w: 600, fill: '#64748B' }); }
+    else if (cur === 'habits') { tag('экран на уровне глаз', 590, 90, '#2563EB', eo(p01(r, 1.5, 2))); tag('обе ступни на полу', 590, 170, '#2563EB', eo(p01(r, 4.5, 5))); tag('⏰ каждые 45 минут — встать', 590, 250, '#D97706', eo(p01(r, 7.5, 8)));
+      x.shadowColor = '#0B1F4D22'; x.shadowBlur = 40; x.fillStyle = '#fff'; rr(1220, 300, 650, 440, 36); x.fill(); x.shadowBlur = 0; T('Правильно сидим', 1545, 400, 54, { w: 900 }); ['🖥 экран — на уровне глаз', '🦶 обе ступни на полу', '⏰ встать каждые 45 мин'].forEach((s, i) => T(s, 1270, 500 + i * 70, 34, { align: 'left', w: 700, a: eo(p01(r, 1.5 + i * 3, 2 + i * 3)) })); }
+    else if (cur === 'walk') { tag('8 000 – 10 000 шагов в день', 590, 90, '#16A34A'); x.shadowColor = '#0B1F4D22'; x.shadowBlur = 40; x.fillStyle = '#fff'; rr(1220, 360, 650, 320, 36); x.fill(); x.shadowBlur = 0; T('🚶 Каждый день', 1545, 470, 54, { w: 900 }); T('8–10 тысяч шагов', 1545, 560, 44, { fill: '#16A34A' }); }
+    else if (cur === 'outro') { x.shadowColor = '#0B1F4D22'; x.shadowBlur = 40; x.fillStyle = '#fff'; rr(1220, 220, 650, 600, 36); x.fill(); x.shadowBlur = 0; T('Каждую неделю:', 1545, 300, 46, { w: 900 });
+      ['📸 фото спереди и сбоку', '📏 плечи на одном уровне?', '👂 ухо над плечом?', '🚶 8–10 тысяч шагов'].forEach((s, i) => T(s, 1270, 400 + i * 90, 36, { align: 'left', w: 700, a: eo(p01(r, .6 + i * .5, 1 + i * .5)) })); T('Ровной спины! 💪', 1545, 760, 48, { w: 900, fill: '#16A34A', a: eo(p01(r, 3, 3.5)) }); }
+    captions(t);
+  }
+  const q = Math.min(...ORDER.slice(1).map(id => Math.abs(t - SC[id].start))); if (q < .25) { x.fillStyle = `rgba(255,255,255,${(1 - q / .25) * .8})`; x.fillRect(0, 0, W, H); }
+}
+window.setup = d => { PH = d.phrases; d.scenes.forEach(s => { SC[s.id] = s; ORDER.push(s.id); }); DUR = d.duration; return DUR; };
+window.draw = draw;
+document.fonts.load(`800 40px Inter`).then(() => { window.ready = true; });
+</script></body></html>
