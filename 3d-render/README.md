@@ -53,3 +53,11 @@ python3 -m venv ~/bpyenv && ~/bpyenv/bin/pip install bpy
 ```
 FBX: детали одного вида объединены, группы UY / HOVLI / O'SIMLIKLAR / ATROF, UV кубом (1 = 1 м),
 0,0,0 = оси 1/А на ±0.000. Памятку для проверяющего (PROCHITAT.txt) класть в архив рядом с FBX.
+
+## Нейросетевая доработка «до фото» (бесплатно, CPU)
+Stable Diffusion 1.5 (Realistic Vision 5.1) + ControlNet Tile: фактура как на фото, контуры дома не сдвигаются.
+```bash
+python3 -m venv ~/sdenv && ~/sdenv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch
+~/sdenv/bin/pip install diffusers transformers accelerate safetensors pillow opencv-python-headless
+~/sdenv/bin/python 3d-render/ai_enhance.py <рендер.png> <выход.jpg> 0.4 24   # ≈ 2–3 мин на кусок 768², 6 кусков на кадр 1800×1200
+```
