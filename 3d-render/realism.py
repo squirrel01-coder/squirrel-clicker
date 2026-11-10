@@ -34,8 +34,10 @@ def tex_img(nt, path, noncolor, vec, proj="BOX"):
     nt.links.new(vec, t.inputs["Vector"])
     return t
 
+TEXSIZE = {}
 def pbr(mat, tex, size_m, tint=(1, 1, 1), rough_mul=1.0, bump=1.0, rot_deg=0.0, sat=1.0, val=1.0, metal=None):
     """Перестроить материал: фото-текстура tex размером size_m метров на один повтор."""
+    TEXSIZE[mat.name] = (tex, size_m, tint, sat, val, rot_deg)
     nt = mat.node_tree
     for n in list(nt.nodes):
         if n.type not in ("OUTPUT_MATERIAL", "BSDF_PRINCIPLED"):
@@ -185,6 +187,11 @@ for i, (r, z1, z2, mk) in enumerate(windows):
     place(s0 - 150, s1 + 150, 600, 610, max(z1 - 300, 0), top, tul, f"Tyul{i}")             # тюль
     place(s0 - 600, s1 + 600, 2600, 2620, 0, Z_SLAB_BOT, glow, f"IchkiNur{i}")               # освещённая глубина комнаты
 
+import veg_real
+veg_real.PBR = pbr
+veg_real.apply(M, None, QUALITY == "final")
+veg_real.neighbors(M)
+
 # ------------------------------------------------------------------ небо и солнце
 w = sc.world; w.use_nodes = True; wn = w.node_tree
 for n in list(wn.nodes): wn.nodes.remove(n)
@@ -267,7 +274,7 @@ CAMS = {
     "2_old": cam2p("K2_old", (-2.6, -11.8, 1.6), (7.5, 0.0, 2.0), 22),
     "3_yon": cam2p("K3_yon", (20.2, -2.0, 1.6), (12.0, 7.0, 2.0), 20),
     "4_hovli": cam2p("K4_hovli", (0.5, 23.5, 1.6), (8.0, 9.0, 2.1), 22),
-    "5_orqa": cam2p("K5_orqa", (17.5, 24.5, 1.6), (6.5, 8.0, 2.1), 24),
+    "5_orqa": cam2p("K5_orqa", (-3.0, 19.0, 1.6), (8.0, 4.0, 2.1), 22),
     "6_tepa": cam_look("K6_tepa", (-15.0, -33.0, 24.0), (8.5, 5.0, -1.5), 30),
 }
 
@@ -327,12 +334,22 @@ def post(path):
     g = (im @ np.array([0.2126, 0.7152, 0.0722], np.float32))[..., None]
     im = g + (im - g) * float(os.environ.get("SAT", "1.18"))            # насыщенность
     im = 0.5 + (im - 0.5) * 1.07                                       # контраст
+    from PIL import ImageFilter
+    l2 = (im @ np.array([0.2126, 0.7152, 0.0722], np.float32))
+    hi = np.clip((l2 - 0.78) / 0.22, 0, 1)[..., None] * im
+    rad = im.shape[1] / 60
+    bl = np.asarray(Image.fromarray((np.clip(hi, 0, 1) * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(rad))).astype(np.float32) / 255
+    im = im + bl * np.array([1.0, 0.85, 0.65], np.float32) * float(os.environ.get("BLOOM", "0.45"))   # свечение светлых мест
     h, w_ = im.shape[:2]; yy, xx = np.mgrid[0:h, 0:w_]
     r = np.sqrt(((xx - w_ / 2) / (w_ / 2)) ** 2 + ((yy - h / 2) / (h / 2)) ** 2)
     im *= (1 - 0.18 * np.clip(r - 0.6, 0, 1) ** 1.5)[..., None]          # виньетка
     Image.fromarray((np.clip(im, 0, 1) * 255 + 0.5).astype(np.uint8)).save(path)
 
 rdir = os.path.join(OUT, "RENDER" if final else "_test"); os.makedirs(rdir, exist_ok=True)
+if os.environ.get("EXPORT_FBX"):
+    import fbx_export
+    fbx_export.run(os.environ["EXPORT_FBX"], TEXSIZE, TEX, CAMS)
+    raise SystemExit(0)
 views = list(CAMS) if VIEWS == "all" else VIEWS.split(",")
 for v in views:
     sc.camera = CAMS[v]

@@ -7,7 +7,7 @@ python3 3d-render/ph_get.py ~/assets hdri:evening_road_01_puresky:4k \
   tex:white_stucco:2k tex:grey_plaster:2k tex:corrugated_iron_02:2k tex:checkered_pavement_tiles:2k \
   tex:concrete_pavement:2k tex:asphalt_02:2k tex:rough_concrete:2k tex:aerial_grass_rock:2k \
   model:island_tree_01:2k model:island_tree_02:2k model:island_tree_03:2k model:tree_small_02:2k \
-  model:shrub_01:2k model:shrub_02:2k model:shrub_04:2k
+  model:shrub_01:2k model:shrub_02:2k model:shrub_04:2k tex:leafy_grass:2k
 ~/bpyenv/bin/pip install pillow numpy
 # 2) рендер: test — быстрые 900×600, final — 1800×1200
 SKY_ROT=-53 SUN_E=8 SUN_EL=9 SKY_STR=0.7 SAT=1.12 \
