@@ -26,3 +26,11 @@ python3 -m venv ~/bpyenv && ~/bpyenv/bin/pip install bpy
 ## Пример
 `primer_namuna/` — учебный дом NAMUNA 7-UY, ранняя версия скрипта из чата на компьютере
 (оси ещё до исправления: позже 3-я ось стала 9000, 4-я — 11600, 5-я — 15000).
+
+## Выгрузка для 3ds Max (главный результат для проверяющего)
+```bash
+~/bpyenv/bin/python 3d-render/export_max.py <скрипт_модели.py> <папка_с_geom.py> <папка_вывода> <ИмяФайла>
+~/bpyenv/bin/python 3d-render/check_fbx.py <файл.fbx>   # повторно открыть FBX и сверить габариты
+```
+FBX: детали одного вида объединены, группы UY / HOVLI / O'SIMLIKLAR / ATROF, UV кубом (1 = 1 м),
+0,0,0 = оси 1/А на ±0.000. Памятку для проверяющего (PROCHITAT.txt) класть в архив рядом с FBX.
