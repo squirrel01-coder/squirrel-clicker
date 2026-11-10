@@ -217,8 +217,15 @@ def wall_pieces(rect, zb, zt, mat, name):
         else:
             box(f"{name}_{i}", x1, s0, z1, x2, s1, z2, mat)
 
+def _trim(r, ends):
+    # убрать нахлёст стен в углах и примыканиях (иначе совпадающие грани дают тёмные полосы)
+    x1, y1, x2, y2 = r
+    if (x2 - x1) > (y2 - y1):
+        return (x1 + ends, y1, x2 - ends, y2)
+    return (x1, y1 + ends, x2, y2 - ends)
 for i, r in enumerate(bearing):
-    wall_pieces(r, 0, Z_EAVES, MAT["plaster"], f"Devor{i}")
+    rr_ = r if i < 2 else _trim(r, T - 1)       # оси А и Г — целиком, остальные — между ними
+    wall_pieces(rr_, 0, Z_EAVES, MAT["plaster"], f"Devor{i}")
 for i, r in enumerate(partitions):
     wall_pieces(r, 0, Z_SLAB_BOT, MAT["inner"], f"Tosiq{i}")
 box("Sokol", X0 - 20, Y0 - 20, Z_GROUND, X1 + 20, Y1 + 20, 0, MAT["plinth"])

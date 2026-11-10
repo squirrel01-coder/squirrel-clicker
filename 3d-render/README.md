@@ -1,5 +1,24 @@
 # 3D-модели и рендеры домов в облаке
 
+## Фотореалистичный рендер (главное)
+```bash
+# 1) ассеты Poly Haven (CC0, можно в коммерческой работе), ~800 МБ, один раз за сессию
+python3 3d-render/ph_get.py ~/assets hdri:evening_road_01_puresky:4k \
+  tex:white_stucco:2k tex:grey_plaster:2k tex:corrugated_iron_02:2k tex:checkered_pavement_tiles:2k \
+  tex:concrete_pavement:2k tex:asphalt_02:2k tex:rough_concrete:2k tex:aerial_grass_rock:2k \
+  model:island_tree_01:2k model:island_tree_02:2k model:island_tree_03:2k model:tree_small_02:2k \
+  model:shrub_01:2k model:shrub_02:2k model:shrub_04:2k
+~/bpyenv/bin/pip install pillow numpy
+# 2) рендер: test — быстрые 900×600, final — 1800×1200
+SKY_ROT=-53 SUN_E=8 SUN_EL=9 SKY_STR=0.7 SAT=1.12 \
+  ~/bpyenv/bin/python 3d-render/realism.py <скрипт_модели.py> <папка_с_geom.py> ~/assets <вывод> final all
+# 3) PDF как в образце офиса (A4, вид на лист)
+python3 3d-render/render_pdf.py <вывод>/RENDER "RENDER KO'RINISHI.pdf"
+```
+Уровень — по образцу офиса «Qirqizobod 22-uy» (6 видов, вечер, тёплые окна, плитка-шахматка, лаванда).
+Виды: 1_ayvon, 2_old, 3_yon, 4_hovli, 5_orqa, 6_tepa. Финальный вид ≈ 5–7 мин на 4 ядрах.
+
+
 Blender работает здесь без окна, как модуль Python (`bpy`, версия 5.3). Ноутбук для этого не нужен.
 
 ## Порядок работы
